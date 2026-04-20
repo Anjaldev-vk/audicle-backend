@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+python-multipart
+pydantic
+confluent-kafka
+# Optimizing for CPU to reduce image size and avoid IO errors during build
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch
+openai-whisper
