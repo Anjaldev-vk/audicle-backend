@@ -9,6 +9,29 @@ from datetime import timedelta
 User = get_user_model()
 
 
+# --------------------Global Test Settings--------------------
+@pytest.fixture(autouse=True)
+def test_settings(settings):
+    """
+    Ensure each test uses an isolated local memory cache.
+    """
+    settings.CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache"
+        }
+    }
+
+@pytest.fixture(autouse=True)
+def clear_test_cache():
+    """
+    Clear the cache before every test to prevent throttle state leakage.
+    """
+    from django.core.cache import cache
+    cache.clear()
+    yield
+    cache.clear()
+
+
 # --------------------API Clients--------------------
 @pytest.fixture
 def api_client():

@@ -1,6 +1,7 @@
 from rest_framework.views import exception_handler
 from rest_framework.response import Response
 from rest_framework import status
+from rest_framework.exceptions import Throttled
 import logging
 
 logger = logging.getLogger(__name__)
@@ -9,6 +10,22 @@ def custom_exception_handler(exc, context):
     """
     Custom exception handler to standardize error responses.
     """
+    if isinstance(exc, Throttled):
+        wait = int(exc.wait) if exc.wait is not None else None
+        response_data = {
+            "status": "error",
+            "code": "throttled",
+            "message": (
+                f"Too many requests. Please try again in {wait} second(s)."
+                if wait
+                else "Too many requests. Please slow down."
+            ),
+            "errors": {},
+        }
+        response = Response(response_data, status=status.HTTP_429_TOO_MANY_REQUESTS)
+        response["Retry-After"] = wait or 60
+        return response
+
     # Call DRF's default exception handler first to get the standard error response.
     response = exception_handler(exc, context)
 
