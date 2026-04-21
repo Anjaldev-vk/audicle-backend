@@ -10,6 +10,14 @@ from .views import (
     RequestPasswordResetView,  
     ResetPasswordConfirmView,
 )
+from .mfa_views import (
+    DisableMFAView,
+    EnableMFAView,
+    MFARecoveryRequestView,
+    MFARecoveryVerifyView,
+    MFATokenVerifyView,
+    VerifyMFASetupView,
+)
 
 urlpatterns = [
 
@@ -18,6 +26,14 @@ urlpatterns = [
     path('login/', LoginView.as_view(), name='login'),
     path('login/google/', GoogleLoginView.as_view(), name='google_login'),
     path('logout/', LogoutView.as_view(), name='logout'),
+
+    # ------------------ MFA ------------------
+    path("mfa/enable/",          EnableMFAView.as_view(),        name="mfa-enable"),
+    path("mfa/verify-setup/",    VerifyMFASetupView.as_view(),   name="mfa-verify-setup"),
+    path("mfa/verify/",          MFATokenVerifyView.as_view(),   name="mfa-verify"),
+    path("mfa/recover/request/", MFARecoveryRequestView.as_view(), name="mfa-recover-request"),
+    path("mfa/recover/verify/",  MFARecoveryVerifyView.as_view(), name="mfa-recover-verify"),
+    path("mfa/disable/",         DisableMFAView.as_view(),       name="mfa-disable"),
     
     #------------------ Token Refresh (Cookie-based) ------------------
     path('token/refresh/', CookieRefreshView.as_view(), name='token_refresh'),

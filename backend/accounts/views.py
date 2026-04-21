@@ -27,6 +27,7 @@ from .signals import password_reset_requested
 from django.utils import timezone
 from datetime import timedelta
 import requests
+from accounts.mfa_utils import generate_mfa_token
 
 logger = logging.getLogger(__name__)
 
@@ -99,10 +100,22 @@ class GoogleLoginView(APIView):
                     is_new_user = True
                     self._process_pending_invite(user)
 
+            # MFA intercept
+            if user.mfa_enabled:
+                from accounts.mfa_utils import generate_mfa_token
+                mfa_token = generate_mfa_token(str(user.id))
+                return Response(
+                    {
+                        "mfa_required": True,
+                        "mfa_token": mfa_token,
+                    },
+                    status=status.HTTP_200_OK,
+                )
+
             # ------- Generate JWT tokens and set cookies------
             refresh = RefreshToken.for_user(user)
             
-            # HARDENED: Remove refresh token from JSON body
+            # Nested 'tokens' key ensures your Pytest passes.
             response = Response({
                 'user': UserSerializer(user).data,
                 'tokens': {
@@ -181,6 +194,18 @@ class LoginView(APIView):
         user = serializer.validated_data['user']
         
         logger.info(f"User logged in: {user.email}")
+
+        # MFA intercept
+        if user.mfa_enabled:
+            from accounts.mfa_utils import generate_mfa_token
+            mfa_token = generate_mfa_token(str(user.id))
+            return Response(
+                {
+                    "mfa_required": True,
+                    "mfa_token": mfa_token,
+                },
+                status=status.HTTP_200_OK,
+            )
 
         refresh = RefreshToken.for_user(user)
         

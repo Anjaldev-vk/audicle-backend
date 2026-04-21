@@ -121,6 +121,10 @@ class User(AbstractBaseUser, PermissionsMixin):
         help_text='Timestamp after which the current OTP becomes invalid.'
     )
 
+    # MFA
+    mfa_enabled = models.BooleanField(default=False)
+    mfa_secret  = models.CharField(max_length=32, null=True, blank=True)
+
     USERNAME_FIELD  = 'email'
     REQUIRED_FIELDS = ['first_name', 'last_name']
 

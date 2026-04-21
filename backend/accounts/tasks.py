@@ -128,3 +128,98 @@ def reset_monthly_usage_task():
         f"[Celery Beat] reset_monthly_usage_task: reset {updated} organisation(s) on {today}."
     )
     return f"Reset {updated} organisations"
+
+
+@shared_task(
+    bind=True,
+    max_retries=3,
+    default_retry_delay=60,
+    acks_late=True,
+)
+def send_mfa_fallback_email_task(
+    self,
+    user_email: str,
+    first_name: str,
+    otp: str,
+) -> None:
+    """
+    Send an emergency MFA fallback OTP email.
+    Retries up to 3 times with exponential backoff:
+      attempt 1 → 60s
+      attempt 2 → 120s
+      attempt 3 → 240s
+    """
+    try:
+        send_mail(
+            subject="Audicle Emergency Access Code",
+            message=(
+                f"Hi {first_name},\n\n"
+                f"Your emergency login code is: {otp}\n\n"
+                "This code expires in 5 minutes.\n"
+                "If you did not request this, your account may be at risk — "
+                "please change your password immediately.\n\n"
+                "— The Audicle Team"
+            ),
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[user_email],
+            fail_silently=False,
+        )
+        logger.info("MFA fallback email sent to %s", user_email)
+
+    except Exception as exc:
+        retry_number = self.request.retries
+        delay = 60 * (2 ** retry_number)
+        logger.warning(
+            "send_mfa_fallback_email_task failed for %s (attempt %d/3): %s — retrying in %ds",
+            user_email,
+            retry_number + 1,
+            exc,
+            delay,
+        )
+        raise self.retry(exc=exc, countdown=delay)
+
+
+@shared_task(
+    bind=True,
+    max_retries=3,
+    default_retry_delay=60,
+    acks_late=True,
+)
+def send_mfa_disabled_alert_task(
+    self,
+    user_email: str,
+    first_name: str,
+) -> None:
+    """
+    Security alert — notifies the user that MFA was disabled on their account.
+    Sent both on intentional disable and emergency recovery.
+    """
+    try:
+        send_mail(
+            subject="Security Alert: MFA Disabled on Your Audicle Account",
+            message=(
+                f"Hi {first_name},\n\n"
+                "This is a security notice that Two-Factor Authentication (MFA) "
+                "has been disabled on your Audicle account.\n\n"
+                "If you did this yourself, no action is needed.\n\n"
+                "If you did NOT disable MFA, your account may be compromised. "
+                "Please change your password immediately and contact support.\n\n"
+                "— The Audicle Team"
+            ),
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[user_email],
+            fail_silently=False,
+        )
+        logger.info("MFA disabled alert sent to %s", user_email)
+
+    except Exception as exc:
+        retry_number = self.request.retries
+        delay = 60 * (2 ** retry_number)
+        logger.warning(
+            "send_mfa_disabled_alert_task failed for %s (attempt %d/3): %s — retrying in %ds",
+            user_email,
+            retry_number + 1,
+            exc,
+            delay,
+        )
+        raise self.retry(exc=exc, countdown=delay)
