@@ -29,6 +29,9 @@ urlpatterns = [
 #---------------------------------- Accounts API ----------------------------------
     path('api/<str:version>/accounts/', include('accounts.urls')),
 
+#---------------------------------- Meetings API ----------------------------------
+    path('api/v1/meetings/', include('meetings.urls', namespace='meetings')),
+
 #---------------------------------- API Documentation ----------------------------------
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),

@@ -60,6 +60,7 @@ INSTALLED_APPS = [
     'django_celery_results',
 
     'accounts',
+    'meetings',
 ]
 
 MIDDLEWARE = [
@@ -276,6 +277,11 @@ LOGGING = {
         },
         # Logger for your custom accounts app
         'accounts': {
+            'handlers': ['console', 'file'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+        'meetings': {
             'handlers': ['console', 'file'],
             'level': 'DEBUG',
             'propagate': False,

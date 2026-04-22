@@ -180,6 +180,101 @@ paths:
               schema:
                 $ref: '#/components/schemas/User'
           description: ''
+  /api/v1/accounts/mfa/disable/:
+    post:
+      operationId: v1_accounts_mfa_disable_create
+      description: |-
+        POST /api/v1/accounts/mfa/disable/
+
+        Intentional disable from security settings.
+        Requires valid TOTP code as confirmation.
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/accounts/mfa/enable/:
+    post:
+      operationId: v1_accounts_mfa_enable_create
+      description: |-
+        POST /api/v1/accounts/mfa/enable/
+
+        Generates a TOTP secret and returns the otpauth:// URI.
+        Frontend renders the URI as a QR code using react-qr-code.
+        Does NOT activate MFA yet — user must call verify-setup/ to confirm.
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/accounts/mfa/recover/request/:
+    post:
+      operationId: v1_accounts_mfa_recover_request_create
+      description: |-
+        POST /api/v1/accounts/mfa/recover/request/
+
+        User declares their device is lost.
+        Sends a 6-digit OTP to their registered email.
+        Rate limited to 3 requests per user per hour.
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/v1/accounts/mfa/recover/verify/:
+    post:
+      operationId: v1_accounts_mfa_recover_verify_create
+      description: |-
+        POST /api/v1/accounts/mfa/recover/verify/
+
+        Exchange mfa_token + email OTP for full JWT.
+        Auto-disables MFA on success — forces fresh setup since device is lost.
+        Sends a security alert email to the user.
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/v1/accounts/mfa/verify/:
+    post:
+      operationId: v1_accounts_mfa_verify_create
+      description: |-
+        POST /api/v1/accounts/mfa/verify/
+
+        Primary path — exchange mfa_token + 6-digit app code for full JWT.
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/v1/accounts/mfa/verify-setup/:
+    post:
+      operationId: v1_accounts_mfa_verify_setup_create
+      description: |-
+        POST /api/v1/accounts/mfa/verify-setup/
+
+        Confirms the TOTP code from the authenticator app.
+        Activates MFA on success.
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
   /api/v1/accounts/organisation/:
     get:
       operationId: v1_accounts_organisation_retrieve
@@ -547,6 +642,153 @@ paths:
                 type: object
                 additionalProperties: {}
           description: ''
+  /api/v1/meetings/:
+    get:
+      operationId: v1_meetings_retrieve
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+    post:
+      operationId: v1_meetings_create
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/meetings/{meeting_id}/:
+    get:
+      operationId: v1_meetings_retrieve_2
+      parameters:
+      - in: path
+        name: meeting_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+    patch:
+      operationId: v1_meetings_partial_update
+      parameters:
+      - in: path
+        name: meeting_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+    delete:
+      operationId: v1_meetings_destroy
+      parameters:
+      - in: path
+        name: meeting_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/meetings/{meeting_id}/bot/dispatch/:
+    post:
+      operationId: v1_meetings_bot_dispatch_create
+      description: |-
+        POST /api/v1/meetings/<id>/bot/dispatch/
+
+        Fires a Kafka stub message to the transcription_tasks topic.
+        Sets meeting status to bot_joining.
+        Playwright bot (Phase 9) will consume this message.
+      parameters:
+      - in: path
+        name: meeting_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/meetings/{meeting_id}/participants/:
+    get:
+      operationId: v1_meetings_participants_retrieve
+      parameters:
+      - in: path
+        name: meeting_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+    post:
+      operationId: v1_meetings_participants_create
+      parameters:
+      - in: path
+        name: meeting_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/meetings/{meeting_id}/participants/{participant_id}/:
+    delete:
+      operationId: v1_meetings_participants_destroy
+      parameters:
+      - in: path
+        name: meeting_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: path
+        name: participant_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
 components:
   schemas:
     AccountTypeEnum:
