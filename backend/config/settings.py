@@ -72,6 +72,8 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+
+    "utils.middleware.RequestLoggingMiddleware",
 ]
 
 ROOT_URLCONF = 'config.urls'
@@ -246,6 +248,7 @@ DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL')
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
+
     'formatters': {
         'verbose': {
             'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
@@ -256,6 +259,7 @@ LOGGING = {
             'style': '{',
         },
     },
+
     'handlers': {
         'console': {
             'level': 'DEBUG',
@@ -269,19 +273,27 @@ LOGGING = {
             'formatter': 'verbose',
         },
     },
+
     'loggers': {
         'django': {
             'handlers': ['console', 'file'],
             'level': 'INFO',
             'propagate': True,
         },
-        # Logger for your custom accounts app
+
         'accounts': {
             'handlers': ['console', 'file'],
             'level': 'DEBUG',
             'propagate': False,
         },
+
         'meetings': {
+            'handlers': ['console', 'file'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+
+        'utils': {
             'handlers': ['console', 'file'],
             'level': 'DEBUG',
             'propagate': False,
