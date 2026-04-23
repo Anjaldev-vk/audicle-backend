@@ -13,9 +13,9 @@ from .views import (
 from .mfa_views import (
     DisableMFAView,
     EnableMFAView,
-    MFARecoveryRequestView,
-    MFARecoveryVerifyView,
-    MFATokenVerifyView,
+    RequestMFARecoveryView,
+    VerifyMFARecoveryView,
+    VerifyMFATokenView,
     VerifyMFASetupView,
 )
 
@@ -30,9 +30,9 @@ urlpatterns = [
     # ------------------ MFA ------------------
     path("mfa/enable/",          EnableMFAView.as_view(),        name="mfa-enable"),
     path("mfa/verify-setup/",    VerifyMFASetupView.as_view(),   name="mfa-verify-setup"),
-    path("mfa/verify/",          MFATokenVerifyView.as_view(),   name="mfa-verify"),
-    path("mfa/recover/request/", MFARecoveryRequestView.as_view(), name="mfa-recover-request"),
-    path("mfa/recover/verify/",  MFARecoveryVerifyView.as_view(), name="mfa-recover-verify"),
+    path("mfa/verify/",          VerifyMFATokenView.as_view(),   name="mfa-verify"),
+    path("mfa/recover/request/", RequestMFARecoveryView.as_view(), name="mfa-recover-request"),
+    path("mfa/recover/verify/",  VerifyMFARecoveryView.as_view(), name="mfa-recover-verify"),
     path("mfa/disable/",         DisableMFAView.as_view(),       name="mfa-disable"),
     
     #------------------ Token Refresh (Cookie-based) ------------------

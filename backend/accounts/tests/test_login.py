@@ -13,7 +13,7 @@ class TestLogin:
             'password': 'Password123!',
         }, format='json')
         assert response.status_code == 200
-        assert 'user' in response.data
+        assert 'user' in response.data['data']
 
     def test_login_wrong_password(self, api_client, individual_user):
         response = api_client.post(LOGIN_URL, {

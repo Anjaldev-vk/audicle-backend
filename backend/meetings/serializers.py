@@ -20,7 +20,10 @@ class MeetingParticipantSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "created_at"]
 
     def validate_email(self, value):
-        """Ensure no duplicate participant email per meeting."""
+        """Normalize email and ensure no duplicate participant email per meeting."""
+        if value:
+            value = value.lower().strip()
+            
         meeting = self.context.get("meeting")
         if meeting:
             qs = MeetingParticipant.objects.filter(
@@ -34,6 +37,14 @@ class MeetingParticipantSerializer(serializers.ModelSerializer):
                     "A participant with this email already exists in this meeting."
                 )
         return value
+
+
+class CreateMeetingParticipantSerializer(MeetingParticipantSerializer):
+    """
+    Serializer for adding a participant to a meeting.
+    """
+    class Meta(MeetingParticipantSerializer.Meta):
+        fields = ["email", "name", "role"]
 
 
 class MeetingSerializer(serializers.ModelSerializer):

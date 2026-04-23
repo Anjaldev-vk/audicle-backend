@@ -52,7 +52,7 @@ class UserSerializer(serializers.ModelSerializer):
 
 
 #-----------------------Registration Serializer-----------------------
-class RegisterSerializer(serializers.Serializer):
+class RegisterUserSerializer(serializers.Serializer):
     email            = serializers.EmailField()
     first_name       = serializers.CharField(max_length=150)
     last_name        = serializers.CharField(max_length=150)
@@ -152,12 +152,15 @@ class RegisterSerializer(serializers.Serializer):
 
 
 #-----------------------Login Serializer-----------------------
-class LoginSerializer(serializers.Serializer):
+class LoginUserSerializer(serializers.Serializer):
     email    = serializers.EmailField()
     password = serializers.CharField(write_only=True)
 
+    def validate_email(self, value):
+        return value.lower().strip()
+
     def validate(self, attrs):
-        email    = attrs.get('email', '').lower().strip()
+        email    = attrs.get('email')
         password = attrs.get('password')
 
         user = User.objects.filter(email=email).first()
@@ -187,10 +190,10 @@ class LoginSerializer(serializers.Serializer):
 
 
 #-----------------------Organisation Invite Serializer-----------------------
-class CreateInviteSerializer(serializers.Serializer):
+class CreateOrganisationInviteSerializer(serializers.Serializer):
     email = serializers.EmailField()
     role  = serializers.ChoiceField(
-        choices=User.OrgRole.choices,   # ← works now because User is imported directly
+        choices=User.OrgRole.choices,
         default=User.OrgRole.MEMBER
     )
 
@@ -227,7 +230,7 @@ class CreateInviteSerializer(serializers.Serializer):
 
 
 #-----------------------Profile Update Serializer-----------------------
-class UpdateProfileSerializer(serializers.ModelSerializer):
+class UpdateUserProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model  = User
         fields = [
@@ -237,7 +240,7 @@ class UpdateProfileSerializer(serializers.ModelSerializer):
 
 
 #-----------------------Change Password Serializer-----------------------
-class ChangePasswordSerializer(serializers.Serializer):
+class ChangeUserPasswordSerializer(serializers.Serializer):
     old_password     = serializers.CharField(write_only=True)
     new_password     = serializers.CharField(write_only=True)
     confirm_password = serializers.CharField(write_only=True)
@@ -261,3 +264,39 @@ class ChangePasswordSerializer(serializers.Serializer):
         user.set_password(self.validated_data['new_password'])
         user.save(update_fields=['password', 'updated_at'])
         return user
+
+
+#-----------------------New Input Serializers-----------------------
+
+class GoogleLoginSerializer(serializers.Serializer):
+    token = serializers.CharField()
+
+
+class RequestPasswordResetSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+    def validate_email(self, value):
+        return value.lower().strip()
+
+
+class ResetPasswordConfirmSerializer(serializers.Serializer):
+    email        = serializers.EmailField()
+    otp          = serializers.CharField()
+    new_password = serializers.CharField(write_only=True)
+
+    def validate_email(self, value):
+        return value.lower().strip()
+    
+    def validate_new_password(self, value):
+        validate_password(value)
+        return value
+
+
+class CookieRefreshSerializer(serializers.Serializer):
+    refresh = serializers.CharField(required=False)
+
+
+class UpdateOrganisationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model  = Organisation
+        fields = ['name', 'slug', 'plan', 'logo_url']

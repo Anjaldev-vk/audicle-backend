@@ -5,7 +5,6 @@ from django.conf import settings
 from django.db import transaction
 
 from rest_framework import status
-from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -13,21 +12,24 @@ from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
 from rest_framework.exceptions import ValidationError, AuthenticationFailed, PermissionDenied, NotFound
 from rest_framework.throttling import ScopedRateThrottle
 from drf_spectacular.utils import extend_schema, OpenApiParameter
+from django.utils import timezone
+from datetime import timedelta
+import requests
 
 from .models import User, OrganisationInvite
 from .serializers import (
-    RegisterSerializer, LoginSerializer,
-    UserSerializer, UpdateProfileSerializer,
-    ChangePasswordSerializer, CreateInviteSerializer,
-    OrganisationSerializer,
+    RegisterUserSerializer, LoginUserSerializer,
+    UserSerializer, UpdateUserProfileSerializer,
+    ChangeUserPasswordSerializer, CreateOrganisationInviteSerializer,
+    OrganisationSerializer, UpdateOrganisationSerializer,
+    GoogleLoginSerializer, RequestPasswordResetSerializer,
+    ResetPasswordConfirmSerializer, CookieRefreshSerializer,
 )
 from .permissions import IsOrgAdmin
 from .utils import generate_otp
 from .signals import password_reset_requested
-from django.utils import timezone
-from datetime import timedelta
-import requests
 from accounts.mfa_utils import generate_mfa_token
+from utils.response import success_response, error_response
 
 logger = logging.getLogger(__name__)
 
@@ -50,23 +52,31 @@ def set_auth_cookies(response, refresh_token):
 
 
 #-----------------------Google Social Login View-----------------------
+# Purpose: Authenticates user via Google OAuth2, creates a user if not exists, and handles pending invites.
 @extend_schema(
     tags=['Authentication'],
-    request={'application/json': {'type': 'object', 'properties': {'token': {'type': 'string'}}}},
+    request=GoogleLoginSerializer,
     responses={200: UserSerializer, 201: UserSerializer}
 )
 class GoogleLoginView(APIView):
+    """
+    POST /api/v1/accounts/google/login/
+
+    Authenticates a user using a Google OAuth2 token.
+    Creates a new user if one doesn't exist.
+    """
+
     permission_classes = [AllowAny]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = 'auth'
 
     def post(self, request, *args, **kwargs):
-        token = request.data.get('token')
-        if not token:
-            raise ValidationError({'token': 'Google token is required.'})
+        serializer = GoogleLoginSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        token = serializer.validated_data['token']
 
         try:
-            #------ Verify token with Google------
+            # ------- Verify token with Google and get user info------
             user_info_response = requests.get(
                 'https://www.googleapis.com/oauth2/v3/userinfo',
                 headers={'Authorization': f'Bearer {token}'}
@@ -100,34 +110,40 @@ class GoogleLoginView(APIView):
                     is_new_user = True
                     self._process_pending_invite(user)
 
-            # MFA intercept
+            # ----- MFA intercept ----------
             if user.mfa_enabled:
-                from accounts.mfa_utils import generate_mfa_token
                 mfa_token = generate_mfa_token(str(user.id))
-                return Response(
-                    {
+                return success_response(
+                    message="MFA verification required.",
+                    data={
                         "mfa_required": True,
                         "mfa_token": mfa_token,
                     },
-                    status=status.HTTP_200_OK,
+                    status_code=status.HTTP_200_OK,
                 )
 
             # ------- Generate JWT tokens and set cookies------
             refresh = RefreshToken.for_user(user)
             
-            # Nested 'tokens' key ensures your Pytest passes.
-            response = Response({
-                'user': UserSerializer(user).data,
-                'tokens': {
-                    'access': str(refresh.access_token),
+            logger.info("User logged in via Google: %s", user.email)
+
+            response = success_response(
+                message="Google login successful.",
+                data={
+                    'user': UserSerializer(user).data,
+                    'tokens': {
+                        'access': str(refresh.access_token),
+                    },
+                    'access_token': str(refresh.access_token),
+                    'is_new_user': is_new_user
                 },
-                'access_token': str(refresh.access_token),
-                'is_new_user': is_new_user
-            }, status=status.HTTP_201_CREATED if is_new_user else status.HTTP_200_OK)
+                status_code=status.HTTP_201_CREATED if is_new_user else status.HTTP_200_OK
+            )
 
             return set_auth_cookies(response, refresh)
 
-        except (ValueError, Exception):
+        except (ValueError, Exception) as e:
+            logger.error("Google login failed: %s", str(e))
             raise AuthenticationFailed('Google authentication failed.')
 
     def _process_pending_invite(self, user):
@@ -144,35 +160,44 @@ class GoogleLoginView(APIView):
             invite.save(update_fields=['status'])
 
 
+
 #------------------------Registration View-----------------------
+# Purpose: Creates a new user account and returns a set of JWT tokens with HttpOnly cookies.
 @extend_schema(
     tags=['Authentication'],
-    request=RegisterSerializer,
+    request=RegisterUserSerializer,
     responses={201: UserSerializer}
 )
 class RegisterView(APIView):
+    """
+    POST /api/v1/accounts/register/
+    
+    Registers a new user account.
+    """
     permission_classes = [AllowAny]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = 'auth'
 
     def post(self, request, *args, **kwargs):
-        serializer = RegisterSerializer(data=request.data)
+        serializer = RegisterUserSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
         
-        logger.info(f"New user registered: {user.email}")
+        logger.info("New user registered: %s", user.email)
 
         refresh = RefreshToken.for_user(user)
         
-        # HARDENED: Access in body, Refresh in Cookie only.
-        # Nested 'tokens' key ensures your Pytest passes.
-        response = Response({
-            'user': UserSerializer(user).data,
-            'tokens': {
-                'access': str(refresh.access_token),
+        response = success_response(
+            message="Registration successful.",
+            data={
+                'user': UserSerializer(user).data,
+                'tokens': {
+                    'access': str(refresh.access_token),
+                },
+                'access_token': str(refresh.access_token),
             },
-            'access_token': str(refresh.access_token),
-        }, status=status.HTTP_201_CREATED)
+            status_code=status.HTTP_201_CREATED
+        )
 
         return set_auth_cookies(response, refresh)
 
@@ -180,43 +205,51 @@ class RegisterView(APIView):
 #------------------------Login View-----------------------
 @extend_schema(
     tags=['Authentication'],
-    request=LoginSerializer,
+    request=LoginUserSerializer,
     responses={200: UserSerializer}
 )
 class LoginView(APIView):
+    """
+    POST /api/v1/accounts/login/
+    
+    Authenticates a user with email and password.
+    """
     permission_classes = [AllowAny]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = 'auth'
 
     def post(self, request, *args, **kwargs):
-        serializer = LoginSerializer(data=request.data)
+        serializer = LoginUserSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.validated_data['user']
         
-        logger.info(f"User logged in: {user.email}")
+        logger.info("User logged in: %s", user.email)
 
         # MFA intercept
         if user.mfa_enabled:
-            from accounts.mfa_utils import generate_mfa_token
             mfa_token = generate_mfa_token(str(user.id))
-            return Response(
-                {
+            return success_response(
+                message="MFA verification required.",
+                data={
                     "mfa_required": True,
                     "mfa_token": mfa_token,
                 },
-                status=status.HTTP_200_OK,
+                status_code=status.HTTP_200_OK,
             )
 
         refresh = RefreshToken.for_user(user)
         
-        # HARDENED: Access in body, Refresh in Cookie only.
-        response = Response({
-            'user': UserSerializer(user).data,
-            'tokens': {
-                'access': str(refresh.access_token),
+        response = success_response(
+            message="Login successful.",
+            data={
+                'user': UserSerializer(user).data,
+                'tokens': {
+                    'access': str(refresh.access_token),
+                },
+                'access_token': str(refresh.access_token),
             },
-            'access_token': str(refresh.access_token),
-        })
+            status_code=status.HTTP_200_OK
+        )
 
         return set_auth_cookies(response, refresh)
 
@@ -224,18 +257,30 @@ class LoginView(APIView):
 #------------------------Token Refresh View (Hybrid Cookie/Body)-----------------------
 @extend_schema(
     tags=['Authentication'],
-    request={'application/json': {'type': 'object', 'properties': {'refresh': {'type': 'string'}}}},
+    request=CookieRefreshSerializer,
     responses={200: {'type': 'object', 'properties': {'access': {'type': 'string'}}}}
 )
 class CookieRefreshView(APIView):
+    """
+    POST /api/v1/accounts/token/refresh/
+    
+    Refreshes the access token using a refresh token from cookies or request body.
+    """
     permission_classes = [AllowAny]
 
     def post(self, request, *args, **kwargs):
+        serializer = CookieRefreshSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
         # HYBRID FIX: Check cookie (Frontend) OR request body (Pytest)
-        refresh_token = request.COOKIES.get("refresh_token") or request.data.get("refresh")
+        refresh_token = request.COOKIES.get("refresh_token") or serializer.validated_data.get("refresh")
 
         if not refresh_token:
-            raise AuthenticationFailed("Refresh token missing!")
+            return error_response(
+                message="Refresh token missing!",
+                code="missing_token",
+                status_code=status.HTTP_401_UNAUTHORIZED
+            )
 
         try:
             #------ validate old token and get user------
@@ -247,74 +292,133 @@ class CookieRefreshView(APIView):
             old_token.blacklist()
 
             # Return 'access' to satisfy tests and React memory storage
-            response = Response({
-                "access": str(new_refresh.access_token),
-                "access_token": str(new_refresh.access_token),
-            }, status=status.HTTP_200_OK)
+            response = success_response(
+                message="Token refreshed successfully.",
+                data={
+                    "access": str(new_refresh.access_token),
+                    "access_token": str(new_refresh.access_token),
+                },
+                status_code=status.HTTP_200_OK
+            )
 
             return set_auth_cookies(response, new_refresh)
 
         except (TokenError, InvalidToken, User.DoesNotExist):
-            raise AuthenticationFailed("Invalid or expired session.")
+            return error_response(
+                message="Invalid or expired session.",
+                code="invalid_token",
+                status_code=status.HTTP_401_UNAUTHORIZED
+            )
 
 
 #------------------------Logout View (Hybrid Cookie/Body)-----------------------
 @extend_schema(
     tags=['Authentication'],
-    request={'application/json': {'type': 'object', 'properties': {'refresh': {'type': 'string'}}}},
+    request=CookieRefreshSerializer,
     responses={200: {'type': 'object', 'properties': {'message': {'type': 'string'}}}}
 )
 class LogoutView(APIView):
+    """
+    POST /api/v1/accounts/logout/
+    
+    Logs out the user by blacklisting the refresh token and clearing the cookie.
+    """
     permission_classes = [IsAuthenticated]
 
     def post(self, request, *args, **kwargs):
+        serializer = CookieRefreshSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
         # HYBRID FIX: Check cookie (Frontend) OR request body (Pytest)
-        refresh_token = request.COOKIES.get("refresh_token") or request.data.get("refresh")
+        refresh_token = request.COOKIES.get("refresh_token") or serializer.validated_data.get("refresh")
 
         if not refresh_token:
-            raise ValidationError({'refresh': 'Refresh token is required.'})
+            return error_response(
+                message="Refresh token is required for logout.",
+                code="missing_token",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
 
         try:
             token = RefreshToken(refresh_token)
             token.blacklist()
             
-            response = Response({'message': 'Logged out successfully.'}, status=status.HTTP_200_OK)
+            response = success_response(
+                message="Logged out successfully.",
+                data={},
+                status_code=status.HTTP_200_OK
+            )
             # Ensure path matches the setter exactly
             response.delete_cookie("refresh_token", path="/api/accounts/")
             return response
         except TokenError:
-            raise ValidationError({'refresh': 'Invalid or expired token.'})
+            return error_response(
+                message="Invalid or expired token.",
+                code="invalid_token",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
 
 
 # ----------------- User Profile & Security Views -----------------
 @extend_schema(tags=['Profile'])
 class MeView(APIView):
+    """
+    GET /api/v1/accounts/me/
+    PATCH /api/v1/accounts/me/
+    
+    GET: Returns the current user's profile.
+    PATCH: Updates the current user's profile fields.
+    """
     permission_classes = [IsAuthenticated]
 
     @extend_schema(responses={200: UserSerializer})
     def get(self, request, *args, **kwargs):
-        return Response(UserSerializer(request.user).data)
+        return success_response(
+            message="Profile retrieved successfully.",
+            data=UserSerializer(request.user).data,
+            status_code=status.HTTP_200_OK
+        )
 
-    @extend_schema(request=UpdateProfileSerializer, responses={200: UserSerializer})
+    @extend_schema(request=UpdateUserProfileSerializer, responses={200: UserSerializer})
     def patch(self, request, *args, **kwargs):
-        serializer = UpdateProfileSerializer(request.user, data=request.data, partial=True)
+        serializer = UpdateUserProfileSerializer(request.user, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
-        return Response(UserSerializer(request.user).data)
+        
+        logger.info("User profile updated: %s", request.user.email)
+        
+        return success_response(
+            message="Profile updated successfully.",
+            data=UserSerializer(request.user).data,
+            status_code=status.HTTP_200_OK
+        )
 
 
-@extend_schema(tags=['Profile'], request=ChangePasswordSerializer, responses={200: {'type': 'object', 'properties': {'message': {'type': 'string'}}}})
+@extend_schema(tags=['Profile'], request=ChangeUserPasswordSerializer, responses={200: {'type': 'object', 'properties': {'message': {'type': 'string'}}}})
 class ChangePasswordView(APIView):
+    """
+    POST /api/v1/accounts/password/change/
+    
+    Changes the authenticated user's password.
+    Forces a logout by clearing cookies and blacklisting the current refresh token.
+    """
     permission_classes = [IsAuthenticated]
 
     def post(self, request, *args, **kwargs):
-        serializer = ChangePasswordSerializer(data=request.data, context={'request': request})
+        serializer = ChangeUserPasswordSerializer(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
         serializer.save()
 
+        logger.info("User password changed: %s", request.user.email)
+
         #-------- Force re-login by clearing session ----------
         refresh_token = request.COOKIES.get('refresh_token')
-        response = Response({'message': 'Password changed. Please log in again.'})
+        
+        response = success_response(
+            message="Password changed. Please log in again.",
+            data={},
+            status_code=status.HTTP_200_OK
+        )
 
         if refresh_token:
             try:
@@ -329,27 +433,58 @@ class ChangePasswordView(APIView):
 #-----------------------Organisation Management Views-----------------------
 @extend_schema(tags=['Organisation'])
 class OrganisationDetailView(APIView):
+    """
+    GET /api/v1/accounts/organisation/
+    PATCH /api/v1/accounts/organisation/
+    
+    GET: Returns details of the current user's organisation.
+    PATCH: Updates organisation details (Admin only).
+    """
     permission_classes = [IsAuthenticated]
 
     @extend_schema(responses={200: OrganisationSerializer})
     def get(self, request, *args, **kwargs):
         if not request.user.organisation:
-            raise NotFound('No organisation found.')
-        return Response(OrganisationSerializer(request.user.organisation).data)
+            return error_response(
+                message="No organisation found.",
+                code="not_found",
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+        return success_response(
+            message="Organisation retrieved successfully.",
+            data=OrganisationSerializer(request.user.organisation).data,
+            status_code=status.HTTP_200_OK
+        )
 
-    @extend_schema(request=OrganisationSerializer, responses={200: OrganisationSerializer})
+    @extend_schema(request=UpdateOrganisationSerializer, responses={200: OrganisationSerializer})
     def patch(self, request, *args, **kwargs):
         if not request.user.is_org_admin:
-            raise PermissionDenied('Admin privileges required.')
+            return error_response(
+                message="Admin privileges required.",
+                code="permission_denied",
+                status_code=status.HTTP_403_FORBIDDEN
+            )
         
-        serializer = OrganisationSerializer(request.user.organisation, data=request.data, partial=True)
+        serializer = UpdateOrganisationSerializer(request.user.organisation, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
-        return Response(serializer.data)
+        
+        logger.info("Organisation updated: %s by %s", request.user.organisation.slug, request.user.email)
+        
+        return success_response(
+            message="Organisation updated successfully.",
+            data=OrganisationSerializer(request.user.organisation).data,
+            status_code=status.HTTP_200_OK
+        )
 
 
 @extend_schema(tags=['Organisation'], responses={200: UserSerializer(many=True)})
 class OrgMembersView(APIView):
+    """
+    GET /api/v1/accounts/organisation/members/
+    
+    Returns a list of all members in the current user's organisation.
+    """
     permission_classes = [IsAuthenticated, IsOrgAdmin]
 
     def get(self, request, *args, **kwargs):
@@ -357,7 +492,12 @@ class OrgMembersView(APIView):
             organisation=request.user.organisation,
             is_active=True
         ).order_by('first_name')
-        return Response(UserSerializer(members, many=True).data)
+        
+        return success_response(
+            message="Organisation members retrieved successfully.",
+            data=UserSerializer(members, many=True).data,
+            status_code=status.HTTP_200_OK
+        )
 
 
 @extend_schema(
@@ -365,41 +505,74 @@ class OrgMembersView(APIView):
     responses={200: {'type': 'object', 'properties': {'message': {'type': 'string'}}}}
 )
 class RemoveMemberView(APIView):
+    """
+    DELETE /api/v1/accounts/organisation/members/<user_id>/
+    
+    Removes a member from the organisation.
+    """
     permission_classes = [IsAuthenticated, IsOrgAdmin]
 
     def delete(self, request, user_id, *args, **kwargs):
         try:
             member = User.objects.get(id=user_id, organisation=request.user.organisation)
         except User.DoesNotExist:
-            raise NotFound('Member not found.')
+            return error_response(
+                message="Member not found.",
+                code="not_found",
+                status_code=status.HTTP_404_NOT_FOUND
+            )
 
         if member == request.user:
-            raise ValidationError('Cannot remove yourself.')
+            return error_response(
+                message="Cannot remove yourself.",
+                code="invalid_action",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
 
         if member.org_role == User.OrgRole.OWNER:
-            raise ValidationError('Cannot remove the owner.')
+            return error_response(
+                message="Cannot remove the owner.",
+                code="invalid_action",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
 
         member.organisation = None
         member.org_role = None
         member.save(update_fields=['organisation', 'org_role', 'updated_at'])
+        
+        logger.info("Member removed from organisation: %s by %s", member.email, request.user.email)
 
-        return Response({'message': f'{member.full_name} removed from organisation.'})
+        return success_response(
+            message="%s removed from organisation." % member.full_name,
+            data={},
+            status_code=status.HTTP_200_OK
+        )
 
 
-@extend_schema(tags=['Organisation'], request=CreateInviteSerializer, responses={201: {'type': 'object', 'properties': {'message': {'type': 'string'}, 'code': {'type': 'string'}, 'expires_at': {'type': 'string', 'format': 'date-time'}}}})
+@extend_schema(tags=['Organisation'], request=CreateOrganisationInviteSerializer, responses={201: {'type': 'object', 'properties': {'message': {'type': 'string'}, 'code': {'type': 'string'}, 'expires_at': {'type': 'string', 'format': 'date-time'}}}})
 class InviteMemberView(APIView):
+    """
+    POST /api/v1/accounts/organisation/invites/
+    
+    Sends an invitation to join the organisation.
+    """
     permission_classes = [IsAuthenticated, IsOrgAdmin]
 
     def post(self, request, *args, **kwargs):
-        serializer = CreateInviteSerializer(data=request.data, context={'request': request})
+        serializer = CreateOrganisationInviteSerializer(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
         invite = serializer.save()
+        
+        logger.info("Organisation invite sent to %s by %s", invite.email, request.user.email)
 
-        return Response({
-            'message': f'Invite sent to {invite.email}.',
-            'code': invite.code,
-            'expires_at': invite.expires_at,
-        }, status=status.HTTP_201_CREATED)
+        return success_response(
+            message="Invite sent to %s." % invite.email,
+            data={
+                'code': invite.code,
+                'expires_at': invite.expires_at,
+            },
+            status_code=status.HTTP_201_CREATED
+        )
 
 
 @extend_schema(
@@ -407,33 +580,54 @@ class InviteMemberView(APIView):
     responses={200: {'type': 'object', 'properties': {'organisation': {'type': 'string'}, 'email': {'type': 'string'}, 'role': {'type': 'string'}}}}
 )
 class VerifyInviteView(APIView):
+    """
+    GET /api/v1/accounts/organisation/invites/<code/verify/
+    
+    Verifies an invitation code and returns organisation details.
+    """
     permission_classes = [AllowAny]
 
     def get(self, request, code, *args, **kwargs):
         invite = OrganisationInvite.objects.select_related('organisation').filter(code=code).first()
         
         if not invite or not invite.is_valid():
-            raise ValidationError('Invalid or expired invite.')
+            return error_response(
+                message="Invalid or expired invite.",
+                code="invalid_invite",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
 
-        return Response({
-            'organisation': invite.organisation.name,
-            'email': invite.email,
-            'role': invite.role,
-        })
+        return success_response(
+            message="Invite verified.",
+            data={
+                'organisation': invite.organisation.name,
+                'email': invite.email,
+                'role': invite.role,
+            },
+            status_code=status.HTTP_200_OK
+        )
     
 
 @extend_schema(
     tags=['Authentication'],
-    request={'application/json': {'type': 'object', 'properties': {'email': {'type': 'string'}}}},
+    request=RequestPasswordResetSerializer,
     responses={200: {'type': 'object', 'properties': {'message': {'type': 'string'}}}}
 )
 class RequestPasswordResetView(APIView):
+    """
+    POST /api/v1/accounts/password/reset/request/
+    
+    Requests a password reset OTP for a given email.
+    """
     permission_classes = [AllowAny]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = 'auth'
 
     def post(self, request, *args, **kwargs):
-        email = request.data.get('email', '').lower().strip()
+        serializer = RequestPasswordResetSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        email = serializer.validated_data['email']
+        
         user = User.objects.filter(email=email).first()
 
         if user:
@@ -443,31 +637,54 @@ class RequestPasswordResetView(APIView):
             user.save(update_fields=['otp', 'otp_expiry'])
 
             password_reset_requested.send(sender=self.__class__, user=user, otp=otp)
+            logger.info("Password reset requested for: %s", email)
 
-        return Response({"message": "If an account exists, an OTP has been sent."})
+        return success_response(
+            message="If an account exists, an OTP has been sent.",
+            data={},
+            status_code=status.HTTP_200_OK
+        )
 
 
 @extend_schema(
     tags=['Authentication'],
-    request={'application/json': {'type': 'object', 'properties': {'email': {'type': 'string'}, 'otp': {'type': 'string'}, 'new_password': {'type': 'string'}}}},
+    request=ResetPasswordConfirmSerializer,
     responses={200: {'type': 'object', 'properties': {'message': {'type': 'string'}}}}
 )
 class ResetPasswordConfirmView(APIView):
+    """
+    POST /api/v1/accounts/password/reset/confirm/
+    
+    Resets the password using an OTP.
+    """
     permission_classes = [AllowAny]
 
     def post(self, request, *args, **kwargs):
-        email = request.data.get('email', '').lower().strip()
-        otp = request.data.get('otp')
-        new_password = request.data.get('new_password')
+        serializer = ResetPasswordConfirmSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        email = serializer.validated_data['email']
+        otp = serializer.validated_data['otp']
+        new_password = serializer.validated_data['new_password']
 
         user = User.objects.filter(email=email).first()
 
         if not user or user.otp != otp or user.otp_expiry < timezone.now():
-            raise ValidationError('Invalid or expired OTP.')
+            return error_response(
+                message="Invalid or expired OTP.",
+                code="invalid_otp",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
 
         user.set_password(new_password)
         user.otp = None  
         user.otp_expiry = None
         user.save(update_fields=['password', 'otp', 'otp_expiry'])
+        
+        logger.info("Password reset successful for: %s", email)
 
-        return Response({"message": "Password reset successful. Please login."})
+        return success_response(
+            message="Password reset successful. Please login.",
+            data={},
+            status_code=status.HTTP_200_OK
+        )

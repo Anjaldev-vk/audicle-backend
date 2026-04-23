@@ -15,14 +15,14 @@ class TestOrganisationDetail:
     def test_org_admin_gets_org(self, org_admin_client):
         response = org_admin_client.get(ORG_URL)
         assert response.status_code == 200
-        assert response.data['name'] == 'Test Org'
+        assert response.data['data']['name'] == 'Test Org'
 
     def test_org_admin_updates_org(self, org_admin_client):
         response = org_admin_client.patch(ORG_URL, {
             'name': 'Updated Org Name',
         }, format='json')
         assert response.status_code == 200
-        assert response.data['name'] == 'Updated Org Name'
+        assert response.data['data']['name'] == 'Updated Org Name'
 
     def test_member_cannot_update_org(self, org_member_client):
         response = org_member_client.patch(ORG_URL, {
@@ -41,7 +41,7 @@ class TestOrgMembers:
     def test_admin_gets_member_list(self, org_admin_client, org_member):
         response = org_admin_client.get(MEMBERS_URL)
         assert response.status_code == 200
-        assert len(response.data) >= 1
+        assert len(response.data['data']) >= 1
 
     def test_member_cannot_get_member_list(self, org_member_client):
         response = org_member_client.get(MEMBERS_URL)
@@ -87,4 +87,4 @@ class TestOrganisationEdgeCases:
     def test_org_member_gets_org(self, org_member_client):
         response = org_member_client.get(ORG_URL)
         assert response.status_code == 200
-        assert response.data['name'] == 'Test Org'
+        assert response.data['data']['name'] == 'Test Org'

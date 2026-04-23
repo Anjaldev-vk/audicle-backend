@@ -25,17 +25,17 @@ class TestRegisterIndividual:
         
         assert response.status_code == status.HTTP_201_CREATED
         
-        assert 'tokens' in response.data
-        assert 'access' in response.data['tokens']
+        assert 'tokens' in response.data['data']
+        assert 'access' in response.data['data']['tokens']
         
-        assert 'refresh' not in response.data['tokens']
+        assert 'refresh' not in response.data['data']['tokens']
         
         assert 'refresh_token' in response.cookies
         assert response.cookies['refresh_token']['httponly'] is True
         
-        assert 'user' in response.data
-        assert response.data['user']['email'] == "newuser@test.com"
-        assert response.data['user']['organisation'] is None
+        assert 'user' in response.data['data']
+        assert response.data['data']['user']['email'] == "newuser@test.com"
+        assert response.data['data']['user']['organisation'] is None
 
     def test_register_duplicate_email(self, api_client, individual_user):
         payload = {
@@ -83,10 +83,10 @@ class TestRegisterOrganisation:
         
         assert response.status_code == status.HTTP_201_CREATED
         
-        assert response.data['user']['org_role'] == 'owner'
-        assert response.data['user']['organisation'] is not None
+        assert response.data['data']['user']['org_role'] == 'owner'
+        assert response.data['data']['user']['organisation'] is not None
         
-        assert 'tokens' in response.data
+        assert 'tokens' in response.data['data']
         assert 'refresh_token' in response.cookies
 
 @pytest.mark.django_db
@@ -108,8 +108,8 @@ class TestRegisterViaInvite:
         
         assert response.status_code == status.HTTP_201_CREATED
         
-        assert response.data['user']['org_role'] == 'member'
-        assert response.data['user']['organisation'] is not None
+        assert response.data['data']['user']['org_role'] == 'member'
+        assert response.data['data']['user']['organisation'] is not None
         
         from accounts.models import OrganisationInvite
         invite = OrganisationInvite.objects.get(code=valid_invite.code)

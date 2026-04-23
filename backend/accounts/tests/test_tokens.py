@@ -24,7 +24,7 @@ class TestTokens:
         }, format='json')
         
         assert response.status_code == status.HTTP_200_OK
-        assert 'access' in response.data
+        assert 'access' in response.data['data']
 
     def test_refresh_token_via_cookie(self, api_client, individual_user):
         """
@@ -38,10 +38,10 @@ class TestTokens:
         response = api_client.post(REFRESH_URL, {}, format='json')
         
         assert response.status_code == status.HTTP_200_OK
-        assert 'access' in response.data
+        assert 'access' in response.data['data']
         
         assert 'refresh_token' in response.cookies
-        assert 'refresh' not in response.data
+        assert 'refresh' not in response.data['data']
 
     def test_logout_via_cookie_clears_cookie(self, api_client, individual_user):
         """

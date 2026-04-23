@@ -10,8 +10,8 @@ class TestProfile:
     def test_get_profile_authenticated(self, auth_client, individual_user):
         response = auth_client.get(ME_URL)
         assert response.status_code == 200
-        assert response.data['email'] == 'individual@test.com'
-        assert response.data['account_type'] == 'individual'
+        assert response.data['data']['email'] == 'individual@test.com'
+        assert response.data['data']['account_type'] == 'individual'
 
     def test_get_profile_unauthenticated(self, api_client):
         response = api_client.get(ME_URL)
@@ -23,8 +23,8 @@ class TestProfile:
             'phone_number': '1234567890',
         }, format='json')
         assert response.status_code == 200
-        assert response.data['job_title'] == 'Senior Engineer'
-        assert response.data['phone_number'] == '1234567890'
+        assert response.data['data']['job_title'] == 'Senior Engineer'
+        assert response.data['data']['phone_number'] == '1234567890'
 
     def test_cannot_update_email(self, auth_client):
         response = auth_client.patch(ME_URL, {
@@ -32,7 +32,7 @@ class TestProfile:
         }, format='json')
         assert response.status_code == 200
         # email should not change
-        assert response.data['email'] == 'individual@test.com'
+        assert response.data['data']['email'] == 'individual@test.com'
 
 
 @pytest.mark.django_db

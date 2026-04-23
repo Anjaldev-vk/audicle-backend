@@ -125,7 +125,7 @@ class TestEnableMFA:
     def test_enable_returns_totp_uri(self, auth_client):
         response = auth_client.post(reverse("mfa-enable", kwargs={"version": "v1"}))
         assert response.status_code == 200
-        assert "totp_uri" in response.json()
+        assert "totp_uri" in response.json()["data"]
 
     def test_enable_stores_secret(self, auth_client, user):
         auth_client.post(reverse("mfa-enable", kwargs={"version": "v1"}))
@@ -201,7 +201,7 @@ class TestMFATokenVerify:
             format="json",
         )
         assert response.status_code == 200
-        assert "access_token" in response.json()
+        assert "access_token" in response.json()["data"]
 
     def test_invalid_mfa_token_returns_401(self, client):
         response = client.post(
@@ -261,7 +261,7 @@ class TestMFARecovery:
             format="json",
         )
         assert response.status_code == 200
-        assert "access_token" in response.json()
+        assert "access_token" in response.json()["data"]
 
         mfa_user.refresh_from_db()
         assert mfa_user.mfa_enabled is False
@@ -343,7 +343,7 @@ class TestLoginMFAIntercept:
             format="json",
         )
         assert response.status_code == 200
-        data = response.json()
+        data = response.json()["data"]
         assert data["mfa_required"] is True
         assert "mfa_token" in data
 
@@ -354,6 +354,6 @@ class TestLoginMFAIntercept:
             format="json",
         )
         assert response.status_code == 200
-        data = response.json()
+        data = response.json()["data"]
         assert "mfa_required" not in data
         assert "access_token" in data

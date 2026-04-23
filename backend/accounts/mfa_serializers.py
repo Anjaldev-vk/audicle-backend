@@ -6,18 +6,18 @@ class VerifyMFASetupSerializer(serializers.Serializer):
     totp_code = serializers.CharField(min_length=6, max_length=6)
 
 
-class MFATokenVerifySerializer(serializers.Serializer):
+class VerifyMFATokenSerializer(serializers.Serializer):
     """Primary path — exchange mfa_token + app TOTP code for full JWT."""
     mfa_token = serializers.CharField()
     totp_code = serializers.CharField(min_length=6, max_length=6)
 
 
-class MFARecoveryRequestSerializer(serializers.Serializer):
+class RequestMFARecoverySerializer(serializers.Serializer):
     """Fallback path step 1 — user declares device is lost."""
     mfa_token = serializers.CharField()
 
 
-class MFARecoveryVerifySerializer(serializers.Serializer):
+class VerifyMFARecoverySerializer(serializers.Serializer):
     """Fallback path step 2 — exchange mfa_token + email OTP for full JWT."""
     mfa_token  = serializers.CharField()
     email_code = serializers.CharField(min_length=6, max_length=6)

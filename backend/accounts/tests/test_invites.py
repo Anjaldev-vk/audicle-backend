@@ -13,7 +13,7 @@ class TestCreateInvite:
             'role':  'member',
         }, format='json')
         assert response.status_code == 201
-        assert 'code' in response.data
+        assert 'code' in response.data['data']
 
     def test_member_cannot_create_invite(self, org_member_client):
         response = org_member_client.post(INVITE_URL, {
@@ -50,8 +50,8 @@ class TestVerifyInvite:
     def test_verify_valid_invite(self, api_client, valid_invite):
         response = api_client.get(f'/api/v1/accounts/invite/{valid_invite.code}/')
         assert response.status_code == 200
-        assert response.data['email'] == 'invited@test.com'
-        assert response.data['organisation'] == 'Test Org'
+        assert response.data['data']['email'] == 'invited@test.com'
+        assert response.data['data']['organisation'] == 'Test Org'
 
     def test_verify_expired_invite(self, api_client, expired_invite):
         response = api_client.get(f'/api/v1/accounts/invite/{expired_invite.code}/')
