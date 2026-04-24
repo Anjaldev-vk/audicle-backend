@@ -45,3 +45,4 @@ django-celery-beat==2.9.0
 django-celery-results==2.5.1
 redis==5.2.1
 pyotp==2.9.0
+boto3==1.34.0
