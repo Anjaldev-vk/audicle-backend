@@ -61,6 +61,7 @@ INSTALLED_APPS = [
 
     'accounts',
     'meetings',
+    'transcripts',
 ]
 
 MIDDLEWARE = [
@@ -159,9 +160,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Custom user model — must be set or Django uses its built-in auth.User
 AUTH_USER_MODEL = 'accounts.User'
 
-# ─────────────────────────────────────────────
-# REST Framework & Spectacular Settings
-# ─────────────────────────────────────────────
+#-------------------Rest Framework & Spectacular Settings ------------------
 
 REST_FRAMEWORK = {
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
@@ -194,9 +193,7 @@ SPECTACULAR_SETTINGS = {
     'VERSION': '1.0.0',
 }
 
-# ─────────────────────────────────────────────
-# JWT Settings (Hybrid Cookie Approach)
-# ─────────────────────────────────────────────
+# ------------------ JWT Authentication Settings ------------------
 
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=15),
@@ -211,9 +208,7 @@ SIMPLE_JWT = {
     'AUTH_TOKEN_CLASSES': ('rest_framework_simplejwt.tokens.AccessToken',),
 }
 
-# ─────────────────────────────────────────────
-# CORS & Cookie Security
-# ─────────────────────────────────────────────
+#------------------- CORS & CSRF Settings ------------------
 
 # Required for the browser to allow HttpOnly cookies in cross-origin requests
 CORS_ALLOW_CREDENTIALS = True
@@ -248,7 +243,6 @@ DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL')
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
-
     'formatters': {
         'verbose': {
             'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
@@ -259,7 +253,6 @@ LOGGING = {
             'style': '{',
         },
     },
-
     'handlers': {
         'console': {
             'level': 'DEBUG',
@@ -273,27 +266,28 @@ LOGGING = {
             'formatter': 'verbose',
         },
     },
-
     'loggers': {
         'django': {
             'handlers': ['console', 'file'],
             'level': 'INFO',
             'propagate': True,
         },
-
         'accounts': {
             'handlers': ['console', 'file'],
             'level': 'DEBUG',
             'propagate': False,
         },
-
         'meetings': {
             'handlers': ['console', 'file'],
             'level': 'DEBUG',
             'propagate': False,
         },
-
         'utils': {
+            'handlers': ['console', 'file'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+        'transcripts': {
             'handlers': ['console', 'file'],
             'level': 'DEBUG',
             'propagate': False,
@@ -302,9 +296,7 @@ LOGGING = {
 }
 
 
-# ─────────────────────────────────────────────
-# Celery Configuration
-# ─────────────────────────────────────────────
+# ------------------ Celery Configuration ------------------
 
 # Broker: Redis DB 0
 CELERY_BROKER_URL = os.environ.get('REDIS_URL', 'redis://redis:6379/0')
@@ -359,3 +351,6 @@ AWS_ALLOWED_UPLOAD_TYPES = {
 }
 
 AWS_MAX_UPLOAD_SIZE = 500 * 1024 * 1024
+
+# -------------Internal microservice communication-----------------
+INTERNAL_API_SECRET = os.environ.get("INTERNAL_API_SECRET", "change-me-in-production")

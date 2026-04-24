@@ -146,6 +146,16 @@ services:
       - kafka
     networks:
       - audicle_network
+    environment:
+        - KAFKA_BROKER=kafka:9092
+        - KAFKA_GROUP=ai-service-group
+        - KAFKA_TOPIC=transcription_tasks
+        - DJANGO_INTERNAL_URL=http://backend:8000
+        - INTERNAL_API_SECRET=${INTERNAL_API_SECRET}
+        - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+        - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+        - AWS_STORAGE_BUCKET_NAME=${AWS_STORAGE_BUCKET_NAME}
+        - AWS_S3_REGION=${AWS_S3_REGION}
 
   zookeeper:
     image: zookeeper:3.9
