@@ -162,3 +162,92 @@ class TranscriptSegment(models.Model):
     @property
     def duration_seconds(self) -> float:
         return round(self.end_seconds - self.start_seconds, 2)
+
+
+class MeetingSummary(models.Model):
+
+    class Status(models.TextChoices):
+        PENDING = "pending",    "Pending"
+        PROCESSING = "processing", "Processing"
+        COMPLETED = "completed",  "Completed"
+        FAILED = "failed",     "Failed"
+
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+    meeting = models.OneToOneField(
+        Meeting,
+        on_delete=models.CASCADE,
+        related_name="summary",
+    )
+    organisation = models.ForeignKey(
+        Organisation,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="summaries",
+    )
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="summaries",
+    )
+
+    # Summary data
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PENDING,
+    )
+    summary = models.TextField(
+        blank=True,
+        default="",
+        help_text="3-5 sentence overview of the meeting",
+    )
+    key_points = models.JSONField(
+        default=list,
+        help_text="List of key discussion points",
+    )
+    action_items = models.JSONField(
+        default=list,
+        help_text="List of action items with owner and due date",
+    )
+    decisions = models.JSONField(
+        default=list,
+        help_text="List of decisions made in the meeting",
+    )
+    next_steps = models.JSONField(
+        default=list,
+        help_text="List of next steps",
+    )
+    retry_count = models.PositiveIntegerField(
+        default=0,
+    )
+    error_message = models.TextField(
+        null=True,
+        blank=True,
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["meeting"]),
+            models.Index(fields=["organisation", "status"]),
+        ]
+        verbose_name = "Meeting Summary"
+        verbose_name_plural = "Meeting Summaries"
+
+    def __str__(self):
+        return f"Summary({self.meeting.title}, {self.get_status_display()})"
+
+    @property
+    def can_retry(self) -> bool:
+        return (
+            self.status == self.Status.FAILED
+            and self.retry_count < 3
+        )

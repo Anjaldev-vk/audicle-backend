@@ -14,6 +14,10 @@ KAFKA_CONFIG = {
 
 producer = Producer(KAFKA_CONFIG)
 
+def get_producer():
+    return producer
+
+
 def delivery_report(err, msg):
     """ Called once for each message produced to indicate delivery result. """
     if err is not None:
@@ -45,3 +49,25 @@ def send_transcription_task(meeting_id, file_path, user_id):
     except Exception as e:
         logger.error(f"Error sending message to Kafka: {e}")
         return False
+
+def send_summarization_task(meeting_id: str, transcript_text: str) -> None:
+    """
+    Send summarization task to summarization_tasks Kafka topic.
+    Called automatically after transcript is saved.
+    """
+    producer = get_producer()
+    message  = {
+        "meeting_id":      meeting_id,
+        "transcript_text": transcript_text,
+    }
+    producer.produce(
+        topic    = "summarization_tasks",
+        key      = meeting_id,
+        value    = json.dumps(message).encode("utf-8"),
+        callback = delivery_report,
+    )
+    producer.flush()
+    logger.info(
+        "Summarization task sent for meeting %s",
+        meeting_id,
+    )

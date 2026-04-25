@@ -6,6 +6,7 @@ import tempfile
 import requests
 import whisper
 from confluent_kafka import Consumer, KafkaError
+from summarizer import generate_summary
 
 import boto3
 from botocore.exceptions import ClientError
@@ -19,6 +20,7 @@ KAFKA_GROUP = os.environ.get("KAFKA_GROUP", "ai-service-group")
 KAFKA_TOPIC = os.environ.get("KAFKA_TOPIC", "transcription_tasks")
 DJANGO_INTERNAL_URL = os.environ.get("DJANGO_INTERNAL_URL", "http://backend:8000")
 INTERNAL_API_SECRET = os.environ.get("INTERNAL_API_SECRET", "change-me-in-production")
+SUMMARIZATION_TOPIC = os.environ.get("SUMMARIZATION_TOPIC", "summarization_tasks")
 
 AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID")
 AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY")
@@ -101,6 +103,72 @@ def post_transcript_to_django(payload: dict) -> bool:
             exc,
         )
         return False
+
+
+def post_summary_to_django(payload: dict) -> bool:
+    """POST summary results to Django internal API."""
+    url = f"{DJANGO_INTERNAL_URL}/api/v1/internal/summary/complete/"
+    try:
+        response = requests.post(
+            url,
+            json    = payload,
+            headers = {
+                "Content-Type":      "application/json",
+                "X-Internal-Secret": INTERNAL_API_SECRET,
+            },
+            timeout = 30,
+        )
+        if response.status_code == 200:
+            logger.info(
+                "Summary saved for meeting %s",
+                payload.get("meeting_id"),
+            )
+            return True
+        logger.error(
+            "Django returned %d for summary: %s",
+            response.status_code,
+            response.text,
+        )
+        return False
+    except requests.RequestException as exc:
+        logger.error("Failed to POST summary: %s", exc)
+        return False
+
+
+def process_summarization_message(message: dict) -> None:
+    """Full pipeline for one summarization Kafka message."""
+    meeting_id      = message.get("meeting_id")
+    transcript_text = message.get("transcript_text")
+
+    logger.info("Starting summarization for meeting %s", meeting_id)
+
+    if not transcript_text:
+        post_summary_to_django({
+            "meeting_id":    meeting_id,
+            "status":        "failed",
+            "error_message": "No transcript text provided.",
+        })
+        return
+
+    result = generate_summary(transcript_text)
+
+    if not result:
+        post_summary_to_django({
+            "meeting_id":    meeting_id,
+            "status":        "failed",
+            "error_message": "Summarization failed.",
+        })
+        return
+
+    post_summary_to_django({
+        "meeting_id":   meeting_id,
+        "status":       "completed",
+        "summary":      result.get("summary", ""),
+        "key_points":   result.get("key_points", []),
+        "action_items": result.get("action_items", []),
+        "decisions":    result.get("decisions", []),
+        "next_steps":   result.get("next_steps", []),
+    })
 
 
 # ── Transcription ─────────────────────────────────────────────────────────────
@@ -244,34 +312,36 @@ def main():
         "group.id":          KAFKA_GROUP,
         "auto.offset.reset": "earliest",
     })
-    consumer.subscribe([KAFKA_TOPIC])
+
+    consumer.subscribe([KAFKA_TOPIC, SUMMARIZATION_TOPIC])
 
     logger.info(
-        "Whisper worker started — listening on topic: %s",
+        "Worker started — listening on: %s, %s",
         KAFKA_TOPIC,
+        SUMMARIZATION_TOPIC,
     )
 
     try:
         while True:
             msg = consumer.poll(timeout=1.0)
-
             if msg is None:
                 continue
-
             if msg.error():
                 if msg.error().code() == KafkaError._PARTITION_EOF:
                     continue
                 logger.error("Kafka error: %s", msg.error())
                 continue
-
             try:
                 message = json.loads(msg.value().decode("utf-8"))
-                process_message(message)
+                topic   = msg.topic()
+                if topic == KAFKA_TOPIC:
+                    process_message(message)
+                elif topic == SUMMARIZATION_TOPIC:
+                    process_summarization_message(message)
             except json.JSONDecodeError as exc:
-                logger.error("Invalid JSON in Kafka message: %s", exc)
+                logger.error("Invalid JSON: %s", exc)
             except Exception as exc:
-                logger.error("Unexpected error processing message: %s", exc)
-
+                logger.error("Unexpected error: %s", exc)
     except KeyboardInterrupt:
         logger.info("Worker shutting down...")
     finally:

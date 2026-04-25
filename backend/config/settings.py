@@ -354,3 +354,18 @@ AWS_MAX_UPLOAD_SIZE = 500 * 1024 * 1024
 
 # -------------Internal microservice communication-----------------
 INTERNAL_API_SECRET = os.environ.get("INTERNAL_API_SECRET", "change-me-in-production")
+
+# ------------- AI Backend Configuration -----------------
+AI_BACKEND = os.environ.get("AI_BACKEND", "gemini")
+
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+GEMINI_MODEL   = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
+
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+OPENAI_MODEL   = os.environ.get("OPENAI_MODEL", "gpt-4o")
+
+OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://ollama:11434/v1")
+OLLAMA_MODEL    = os.environ.get("OLLAMA_MODEL", "llama3.2")
+
+SUMMARY_MAX_TOKENS    = 4000
+SUMMARY_CHUNK_OVERLAP = 100
