@@ -62,6 +62,7 @@ INSTALLED_APPS = [
     'accounts',
     'meetings',
     'transcripts',
+    'rag',
 ]
 
 MIDDLEWARE = [
