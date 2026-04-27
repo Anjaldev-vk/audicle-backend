@@ -45,7 +45,7 @@ def set_auth_cookies(response, refresh_token):
         httponly=True,
         secure=not settings.DEBUG, 
         samesite="Lax",      
-        path="/api/accounts/", 
+        path="/api/", 
         max_age=7 * 24 * 60 * 60 
     )
     return response
@@ -349,7 +349,7 @@ class LogoutView(APIView):
                 status_code=status.HTTP_200_OK
             )
             # Ensure path matches the setter exactly
-            response.delete_cookie("refresh_token", path="/api/accounts/")
+            response.delete_cookie("refresh_token", path="/api/")
             return response
         except TokenError:
             return error_response(
@@ -426,7 +426,7 @@ class ChangePasswordView(APIView):
             except TokenError:
                 pass
         
-        response.delete_cookie('refresh_token', path='/api/accounts/')
+        response.delete_cookie('refresh_token', path='/api/')
         return response
 
 

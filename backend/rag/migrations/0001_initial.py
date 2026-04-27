@@ -9,9 +9,10 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
 
-    initial = True
+
 
     dependencies = [
+        ('rag', '0000_pgvector_extension'),
         ('accounts', '0003_user_mfa_enabled_user_mfa_secret'),
         ('meetings', '0001_initial'),
         ('transcripts', '0002_meetingsummary'),

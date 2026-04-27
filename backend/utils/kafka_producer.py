@@ -14,16 +14,22 @@ KAFKA_CONFIG = {
 
 producer = Producer(KAFKA_CONFIG)
 
+
 def get_producer():
     return producer
 
 
 def delivery_report(err, msg):
-    """ Called once for each message produced to indicate delivery result. """
+    """Called once for each message produced to indicate delivery result."""
     if err is not None:
-        logger.error(f'Message delivery failed: {err}')
+        logger.error('Message delivery failed: %s', err)
     else:
-        logger.info(f'Message delivered to {msg.topic()} [{msg.partition()}]')
+        logger.info(
+            'Message delivered to %s [%s]',
+            msg.topic(),
+            msg.partition(),
+        )
+
 
 def send_transcription_task(meeting_id, file_path, user_id):
     """
@@ -31,32 +37,30 @@ def send_transcription_task(meeting_id, file_path, user_id):
     """
     task_data = {
         'meeting_id': meeting_id,
-        'file_path': file_path,
-        'user_id': user_id,
-        'status': 'pending'
+        'file_path':  file_path,
+        'user_id':    user_id,
+        'status':     'pending',
     }
-    
     try:
         producer.produce(
             'transcription_tasks',
             key=str(meeting_id),
             value=json.dumps(task_data).encode('utf-8'),
-            callback=delivery_report
+            callback=delivery_report,
         )
-        # Flush to ensure the message is sent
         producer.flush()
         return True
     except Exception as e:
-        logger.error(f"Error sending message to Kafka: {e}")
+        logger.error('Error sending transcription task to Kafka: %s', e)
         return False
+
 
 def send_summarization_task(meeting_id: str, transcript_text: str) -> None:
     """
     Send summarization task to summarization_tasks Kafka topic.
     Called automatically after transcript is saved.
     """
-    producer = get_producer()
-    message  = {
+    message = {
         "meeting_id":      meeting_id,
         "transcript_text": transcript_text,
     }
@@ -70,4 +74,33 @@ def send_summarization_task(meeting_id: str, transcript_text: str) -> None:
     logger.info(
         "Summarization task sent for meeting %s",
         meeting_id,
+    )
+
+
+def send_embedding_task(
+    transcript_id: str,
+    raw_text: str,
+    segments: list,
+) -> None:
+    """
+    Send embedding task to embedding_tasks Kafka topic.
+    Called automatically after transcript is saved.
+    ai_worker chunks the text, embeds it, and POSTs
+    vectors to /internal/rag/embed/.
+    """
+    message = {
+        "transcript_id": transcript_id,
+        "raw_text":      raw_text,
+        "segments":      segments,
+    }
+    producer.produce(
+        topic    = "embedding_tasks",
+        key      = transcript_id,
+        value    = json.dumps(message).encode("utf-8"),
+        callback = delivery_report,
+    )
+    producer.flush()
+    logger.info(
+        "Embedding task sent for transcript %s",
+        transcript_id,
     )

@@ -152,9 +152,11 @@ services:
     networks:
       - audicle_network
     environment:
-        - KAFKA_BROKER=kafka:9092
+        - KAFKA_BROKER=kafka:29092
         - KAFKA_GROUP=ai-service-group
         - KAFKA_TOPIC=transcription_tasks
+        - SUMMARIZATION_TOPIC=summarization_tasks
+        - EMBEDDING_TOPIC=embedding_tasks
         - DJANGO_INTERNAL_URL=http://backend:8000
         - INTERNAL_API_SECRET=${INTERNAL_API_SECRET}
         - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
@@ -166,7 +168,6 @@ services:
         - GEMINI_MODEL=${GEMINI_MODEL}
         - OPENAI_API_KEY=${OPENAI_API_KEY}
         - OPENAI_MODEL=${OPENAI_MODEL}
-        - SUMMARIZATION_TOPIC=summarization_tasks
 
   zookeeper:
     image: zookeeper:3.9

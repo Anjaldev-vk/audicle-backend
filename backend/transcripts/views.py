@@ -18,7 +18,7 @@ from transcripts.serializers import (
     TranslateSummarySerializer,
 )
 from transcripts.utils import get_transcript_for_meeting
-from utils.kafka_producer import send_transcription_task, send_summarization_task
+from utils.kafka_producer import send_transcription_task, send_summarization_task, send_embedding_task
 from utils.response import error_response, success_response
 
 logger = logging.getLogger("transcripts")
@@ -299,6 +299,31 @@ class InternalTranscriptCompleteView(APIView):
                         logger.error(
                             "Failed to fire summarization task for meeting %s: %s",
                             meeting.id,
+                            exc,
+                        )
+
+                    # Auto-trigger embedding for RAG
+                    try:
+                        send_embedding_task(
+                            transcript_id = str(transcript.id),
+                            raw_text      = transcript.raw_text,
+                            segments      = [
+                                {
+                                    "text":          seg.text,
+                                    "start_seconds": seg.start_seconds,
+                                    "end_seconds":   seg.end_seconds,
+                                }
+                                for seg in transcript.segments.all()
+                            ],
+                        )
+                        logger.info(
+                            "Embedding task fired for transcript %s",
+                            transcript.id,
+                        )
+                    except Exception as exc:
+                        logger.error(
+                            "Failed to fire embedding task for transcript %s: %s",
+                            transcript.id,
                             exc,
                         )
 

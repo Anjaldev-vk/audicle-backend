@@ -23,6 +23,9 @@ from drf_spectacular.views import (
     SpectacularRedocView,
 )
 
+
+from rag import urls as rag_urls
+
 urlpatterns = [
 #---------------------------------- Admin ----------------------------------
     path('admin/', admin.site.urls),
@@ -34,6 +37,12 @@ urlpatterns = [
 
 #---------------------------------- Transcripts API ----------------------------------
     path("api/v1/", include("transcripts.urls", namespace="transcripts")),
+
+#---------------------------------- RAG API ----------------------------------
+    path('api/v1/rag/', include('rag.urls')),
+
+#------------------------------------ internal  ------------------------------------
+    path('internal/', include(rag_urls.internal_urlpatterns)),
 
 #---------------------------------- API Documentation ----------------------------------
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),

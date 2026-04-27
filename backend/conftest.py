@@ -1,5 +1,6 @@
 # backend/conftest.py
 import pytest
+from django.db import connection
 from rest_framework.test import APIClient
 from django.contrib.auth import get_user_model
 from accounts.models import Organisation, OrganisationInvite
@@ -9,30 +10,43 @@ from datetime import timedelta
 User = get_user_model()
 
 
-# --------------------Global Test Settings--------------------
+# -------------- pgvector: enable extension in test database before any test runs ----------------
+
+@pytest.fixture(scope='session', autouse=True)
+def enable_pgvector(django_db_blocker):
+    """
+    Create the pgvector extension in the test database.
+    Must run before Django creates the rag_embeddingchunk table.
+    scope='session' ensures it runs once per test session.
+    """
+    with django_db_blocker.unblock():
+        with connection.cursor() as cursor:
+            cursor.execute('CREATE EXTENSION IF NOT EXISTS vector;')
+
+
+# ── Global Test Settings ──────────────────────────────────────────────────────
+
 @pytest.fixture(autouse=True)
 def test_settings(settings):
-    """
-    Ensure each test uses an isolated local memory cache.
-    """
+    """Ensure each test uses an isolated local memory cache."""
     settings.CACHES = {
         "default": {
             "BACKEND": "django.core.cache.backends.locmem.LocMemCache"
         }
     }
 
+
 @pytest.fixture(autouse=True)
 def clear_test_cache():
-    """
-    Clear the cache before every test to prevent throttle state leakage.
-    """
+    """Clear the cache before every test to prevent throttle state leakage."""
     from django.core.cache import cache
     cache.clear()
     yield
     cache.clear()
 
 
-# --------------------API Clients--------------------
+# ── API Clients ───────────────────────────────────────────────────────────────
+
 @pytest.fixture
 def api_client():
     return APIClient()
@@ -59,7 +73,8 @@ def org_member_client(api_client, org_member):
     return api_client
 
 
-# --------------------User and Organisation Fixtures--------------------
+# ── User and Organisation Fixtures ────────────────────────────────────────────
+
 @pytest.fixture
 def individual_user(db):
     return User.objects.create_user(
@@ -114,7 +129,8 @@ def deactivated_user(db):
     )
 
 
-# --------------------Organisation Invite Fixtures--------------------
+# ── Organisation Invite Fixtures ──────────────────────────────────────────────
+
 @pytest.fixture
 def valid_invite(db, organisation, org_admin):
     return OrganisationInvite.objects.create(
