@@ -23,7 +23,7 @@ from drf_spectacular.views import (
     SpectacularRedocView,
 )
 
-
+from meetings.internal_views import BotStatusView
 from rag import urls as rag_urls
 
 urlpatterns = [
@@ -43,6 +43,7 @@ urlpatterns = [
 
 #------------------------------------ internal  ------------------------------------
     path('internal/', include(rag_urls.internal_urlpatterns)),
+    path('internal/bot/status/', BotStatusView.as_view(), name='internal-bot-status'),
 
 #---------------------------------- API Documentation ----------------------------------
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),

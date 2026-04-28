@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 MAX_TOKENS_PER_CHUNK = 4000
 CHUNK_OVERLAP_WORDS  = 100
 
-# ── Summarization system prompt ───────────────────────────────────────────────
+# ------- Summarization system prompt -------------------------------
 
 SUMMARIZATION_SYSTEM_PROMPT = """
 You are an expert meeting analyst. Analyze meeting transcripts and extract
@@ -40,7 +40,7 @@ Rules:
 - Never add information not present in the transcript
 """
 
-# ── Translation system prompt ─────────────────────────────────────────────────
+# ------- Translation system prompt -------------------------------
 
 TRANSLATION_SYSTEM_PROMPT = """
 You are a professional translator.
@@ -50,7 +50,7 @@ Return only the translated text — no explanation or preamble.
 """
 
 
-# ── Token counting ────────────────────────────────────────────────────────────
+# --------- Token counting -------------------------------
 
 def count_tokens(text: str) -> int:
     """
@@ -64,7 +64,7 @@ def count_tokens(text: str) -> int:
         return int(len(text.split()) * 1.3)
 
 
-# ── Text chunking ─────────────────────────────────────────────────────────────
+# ------- Text chunking -------------------------------
 
 def chunk_text(text: str) -> list[str]:
     """
@@ -96,7 +96,7 @@ def chunk_text(text: str) -> list[str]:
     return chunks
 
 
-# ── Summarization ─────────────────────────────────────────────────────────────
+# ------- Summarization pipeline -------------------------------
 
 def summarize_chunk(
     provider,
@@ -199,7 +199,7 @@ def generate_summary(transcript_text: str) -> dict | None:
     return merge_chunk_summaries(provider, summaries)
 
 
-# ── Translation ───────────────────────────────────────────────────────────────
+# ------- Translation -------------------------------
 
 def translate_summary(summary_text: str, target_language: str) -> str | None:
     """

@@ -327,6 +327,11 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'accounts.tasks.reset_monthly_usage_task',
         'schedule': crontab(hour=0, minute=0, day_of_month=1),
     },
+    # Runs every 5 minutes — auto-dispatches bots for upcoming meetings
+    'auto-dispatch-bots-every-5-minutes': {
+        'task': 'meetings.auto_dispatch_bots',
+        'schedule': crontab(minute='*/5'),
+    },
 }
 
 

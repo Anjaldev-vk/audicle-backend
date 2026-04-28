@@ -198,21 +198,22 @@ class BotDispatchView(APIView):
                 status_code=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Fire Kafka stub message
+        # Fire bot task to Kafka — consumed by bot_service/worker.py
         try:
-            from utils.kafka_producer import send_transcription_task
+            from utils.kafka_producer import send_bot_task
 
-            send_transcription_task(
-                meeting_id=str(meeting.id),
-                file_path=None,           # no file yet — bot will produce this
-                user_id=str(request.user.id),
+            send_bot_task(
+                meeting_id   = str(meeting.id),
+                meeting_url  = meeting.meeting_url,
+                platform     = meeting.platform,
+                duration_cap = 3600,
             )
             logger.info(
-                "Kafka bot dispatch message sent for meeting %s", meeting.id
+                "Bot dispatch message sent to Kafka for meeting %s", meeting.id
             )
         except Exception as exc:
             logger.error(
-                "Kafka dispatch failed for meeting %s: %s", meeting.id, exc
+                "Kafka bot dispatch failed for meeting %s: %s", meeting.id, exc
             )
             return error_response(
                 message="Failed to dispatch bot. Please try again.",

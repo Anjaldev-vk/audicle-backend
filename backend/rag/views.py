@@ -23,6 +23,7 @@ from .utils import (
     build_search_prompt,
     build_chat_prompt,
 )
+from utils.permissions import IsInternalService
 
 logger = logging.getLogger('rag')
 
@@ -302,19 +303,9 @@ class InternalEmbedView(APIView):
     Internal endpoint — called by ai_worker only.
     Authenticated via X-Internal-Secret header, not JWT.
     """
-    permission_classes = []
+    permission_classes = [IsInternalService]
 
     def post(self, request):
-        from django.conf import settings
-
-        secret = request.headers.get('X-Internal-Secret')
-        if secret != settings.INTERNAL_API_SECRET:
-            return error_response(
-                code='forbidden',
-                message='Invalid internal secret',
-                status_code=status.HTTP_403_FORBIDDEN
-            )
-
         serializer = InternalEmbedSerializer(data=request.data)
         if not serializer.is_valid():
             return error_response(

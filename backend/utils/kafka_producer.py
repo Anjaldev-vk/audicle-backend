@@ -77,6 +77,37 @@ def send_summarization_task(meeting_id: str, transcript_text: str) -> None:
     )
 
 
+def send_bot_task(
+    meeting_id: str,
+    meeting_url: str,
+    platform: str,
+    duration_cap: int = 3600,
+) -> bool:
+    """
+    Send a bot dispatch message to the 'bot_tasks' Kafka topic.
+    Consumed by bot_service/worker.py → BotRunner.
+    """
+    message = {
+        "meeting_id":   meeting_id,
+        "meeting_url":  meeting_url,
+        "platform":     platform,
+        "duration_cap": duration_cap,
+    }
+    try:
+        producer.produce(
+            topic    = "bot_tasks",
+            key      = meeting_id,
+            value    = json.dumps(message).encode("utf-8"),
+            callback = delivery_report,
+        )
+        producer.flush()
+        logger.info("Bot task sent for meeting %s", meeting_id)
+        return True
+    except Exception as exc:
+        logger.error("Error sending bot task to Kafka: %s", exc)
+        return False
+
+
 def send_embedding_task(
     transcript_id: str,
     raw_text: str,

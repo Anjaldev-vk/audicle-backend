@@ -20,6 +20,7 @@ from transcripts.serializers import (
 from transcripts.utils import get_transcript_for_meeting
 from utils.kafka_producer import send_transcription_task, send_summarization_task, send_embedding_task
 from utils.response import error_response, success_response
+from utils.permissions import IsInternalService
 
 logger = logging.getLogger("transcripts")
 
@@ -203,23 +204,11 @@ class InternalTranscriptCompleteView(APIView):
     - Creates TranscriptSegment records
     - Updates Meeting status to completed or failed
     """
-    permission_classes = []   # No JWT — uses shared secret instead
+    permission_classes = [IsInternalService]
 
     def post(self, request):
 
-        # 1. Verify internal secret
-        secret = request.headers.get("X-Internal-Secret")
-        if not secret or secret != settings.INTERNAL_API_SECRET:
-            logger.warning(
-                "Internal transcript endpoint called with invalid secret"
-            )
-            return error_response(
-                message="Unauthorized.",
-                code="unauthorized",
-                status_code=status.HTTP_403_FORBIDDEN,
-            )
-
-        # 2. Validate payload
+        # 1. Validate payload
         serializer = InternalTranscriptCompleteSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
@@ -680,23 +669,11 @@ class InternalSummaryCompleteView(APIView):
         Creates or updates MeetingSummary record
         with all structured summary data.
     """
-    permission_classes = []   # No JWT — uses shared secret
+    permission_classes = [IsInternalService]
 
     def post(self, request):
 
-        # 1. Verify internal secret
-        secret = request.headers.get("X-Internal-Secret")
-        if not secret or secret != settings.INTERNAL_API_SECRET:
-            logger.warning(
-                "Internal summary endpoint called with invalid secret"
-            )
-            return error_response(
-                message="Unauthorized.",
-                code="unauthorized",
-                status_code=status.HTTP_403_FORBIDDEN,
-            )
-
-        # 2. Validate payload
+        # 1. Validate payload
         serializer = InternalSummaryCompleteSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data

@@ -191,8 +191,33 @@ services:
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
     ports:
       - "9092:9092"
+    networks:
+      - audicle_network
+
+  # Bot Service — Playwright + ffmpeg meeting recorder (Phase 9)
+  bot_service:
+    build:
+      context: ./bot_service
+      dockerfile: Dockerfile
+    container_name: audicle_botservice
+    command: python worker.py
+    shm_size: '2gb'
+    depends_on:
+      - kafka
+      - backend
+    environment:
+      - KAFKA_BROKER=kafka:29092
+      - KAFKA_GROUP=bot-service-group
+      - BOT_TOPIC=bot_tasks
+      - DJANGO_INTERNAL_URL=http://backend:8000
+      - INTERNAL_API_SECRET=${INTERNAL_API_SECRET}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_STORAGE_BUCKET_NAME=${AWS_STORAGE_BUCKET_NAME}
+      - AWS_S3_REGION=${AWS_S3_REGION}
     networks:
       - audicle_network
 
