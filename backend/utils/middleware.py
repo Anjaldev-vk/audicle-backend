@@ -109,3 +109,35 @@ class RequestLoggingMiddleware(MiddlewareMixin):
         except Exception:
             pass
         return "anonymous"
+
+
+class TenantMiddleware(MiddlewareMixin):
+    """
+    Resolves the current tenant (Organisation) from the authenticated user
+    and attaches it to the request object for use in views.
+
+    Sets:
+        request.organisation  → Organisation instance (or None for individual users)
+        request.is_org_user   → True if user belongs to an organisation
+
+    This allows views to scope queries without repeating
+    user.organisation lookups everywhere.
+
+    Skips:
+        - Unauthenticated requests (anonymous users)
+        - Requests where user has no organisation (individual users)
+    """
+
+    def process_request(self, request):
+        request.organisation = None
+        request.is_org_user = False
+
+        try:
+            if hasattr(request, "user") and request.user.is_authenticated:
+                org = getattr(request.user, "organisation", None)
+                if org is not None:
+                    request.organisation = org
+                    request.is_org_user = True
+        except Exception:
+            # Never block the request — log silently and continue
+            pass

@@ -493,7 +493,7 @@ class TestInternalSummaryComplete:
             HTTP_X_INTERNAL_SECRET="wrong-secret",
         )
         assert response.status_code == 403
-        assert response.json()["code"] == "unauthorized"
+        assert response.json()["code"] == "permission_denied"
 
     def test_missing_secret_returns_403(self, client, meeting):
         response = client.post(

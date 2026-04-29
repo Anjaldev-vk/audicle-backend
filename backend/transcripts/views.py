@@ -204,6 +204,7 @@ class InternalTranscriptCompleteView(APIView):
     - Creates TranscriptSegment records
     - Updates Meeting status to completed or failed
     """
+    authentication_classes = []
     permission_classes = [IsInternalService]
 
     def post(self, request):
@@ -669,6 +670,7 @@ class InternalSummaryCompleteView(APIView):
         Creates or updates MeetingSummary record
         with all structured summary data.
     """
+    authentication_classes = []
     permission_classes = [IsInternalService]
 
     def post(self, request):

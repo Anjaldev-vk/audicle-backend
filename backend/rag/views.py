@@ -303,6 +303,7 @@ class InternalEmbedView(APIView):
     Internal endpoint — called by ai_worker only.
     Authenticated via X-Internal-Secret header, not JWT.
     """
+    authentication_classes = []
     permission_classes = [IsInternalService]
 
     def post(self, request):

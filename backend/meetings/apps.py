@@ -6,4 +6,4 @@ class MeetingsConfig(AppConfig):
     name = "meetings"
 
     def ready(self):
-        pass 
+        import meetings.signals  # noqa: F401

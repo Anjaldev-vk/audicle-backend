@@ -46,6 +46,7 @@ SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 # Application definition
 
 INSTALLED_APPS = [
+    'daphne',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -63,6 +64,7 @@ INSTALLED_APPS = [
     'meetings',
     'transcripts',
     'rag',
+    'channels',
 ]
 
 MIDDLEWARE = [
@@ -76,6 +78,7 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 
     "utils.middleware.RequestLoggingMiddleware",
+    "utils.middleware.TenantMiddleware",
 ]
 
 ROOT_URLCONF = 'config.urls'
@@ -96,6 +99,7 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'config.wsgi.application'
+ASGI_APPLICATION = "config.asgi.application"
 
 
 # Database
@@ -375,3 +379,15 @@ OLLAMA_MODEL    = os.environ.get("OLLAMA_MODEL", "llama3.2")
 
 SUMMARY_MAX_TOKENS    = 4000
 SUMMARY_CHUNK_OVERLAP = 100
+
+# Channel layer (Redis db=2 to keep separate from broker/cache)
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [(os.environ.get("REDIS_HOST", "redis"), 6379)],
+            "capacity": 1500,
+            "expiry": 60,
+        },
+    }
+}
