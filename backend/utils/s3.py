@@ -13,11 +13,24 @@ def get_s3_client():
     Returns a configured boto3 S3 client.
     Uses credentials from Django settings loaded from .env
     """
+    if not all([settings.AWS_S3_REGION, settings.AWS_ACCESS_KEY_ID, settings.AWS_SECRET_ACCESS_KEY]):
+        logger.error("Missing S3 configuration: Region=%s, ID=%s, Key=%s", 
+                     settings.AWS_S3_REGION, 
+                     bool(settings.AWS_ACCESS_KEY_ID), 
+                     bool(settings.AWS_SECRET_ACCESS_KEY))
+        raise ValueError("Missing AWS S3 configuration.")
+
+    from botocore.client import Config
+    
     return boto3.client(
         "s3",
         region_name           = settings.AWS_S3_REGION,
         aws_access_key_id     = settings.AWS_ACCESS_KEY_ID,
         aws_secret_access_key = settings.AWS_SECRET_ACCESS_KEY,
+        config                = Config(
+            signature_version = "s3v4",
+            s3                = {"addressing_style": "virtual"}
+        ),
     )
 
 
@@ -54,14 +67,14 @@ def generate_presigned_upload_url(
             Params={
                 "Bucket":      settings.AWS_STORAGE_BUCKET_NAME,
                 "Key":         s3_key,
-                "ContentType": content_type,
             },
             ExpiresIn=settings.AWS_PRESIGNED_UPLOAD_EXPIRY,
         )
         logger.info(
-            "Presigned upload URL generated for meeting %s key %s",
+            "Presigned upload URL generated for meeting %s key %s: %s",
             meeting_id,
             s3_key,
+            upload_url
         )
         return {
             "upload_url": upload_url,

@@ -10,7 +10,8 @@ class TestOrganisationDetail:
 
     def test_individual_user_has_no_org(self, auth_client):
         response = auth_client.get(ORG_URL)
-        assert response.status_code == 404
+        assert response.status_code == 200
+        assert response.data['data'] is None
 
     def test_org_admin_gets_org(self, org_admin_client):
         response = org_admin_client.get(ORG_URL)

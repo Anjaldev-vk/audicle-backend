@@ -22,8 +22,11 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 LOGS_DIR = os.path.join(BASE_DIR, 'logs')
 os.makedirs(LOGS_DIR, exist_ok=True)
 
-# Load .env file
-load_dotenv(os.path.join(BASE_DIR, '.env'))
+# Load .env file (check backend/ or root/)
+dotenv_path = os.path.join(BASE_DIR, '.env')
+if not os.path.exists(dotenv_path):
+    dotenv_path = os.path.join(BASE_DIR.parent, '.env')
+load_dotenv(dotenv_path)
 
 
 # Quick-start development settings - unsuitable for production
@@ -349,15 +352,23 @@ AWS_PRESIGNED_UPLOAD_EXPIRY   = 900
 AWS_PRESIGNED_DOWNLOAD_EXPIRY = 3600
 
 AWS_ALLOWED_UPLOAD_TYPES = {
-    "audio/mpeg":  "mp3",
-    "audio/mp4":   "mp4",
-    "audio/wav":   "wav",
-    "audio/x-wav": "wav",
-    "audio/m4a":   "m4a",
-    "audio/x-m4a": "m4a",
-    "audio/webm":  "webm",
-    "video/mp4":   "mp4",
-    "video/webm":  "webm",
+    "audio/mpeg":       "mp3",
+    "audio/mp3":        "mp3",
+    "audio/x-mp3":      "mp3",
+    "audio/mp4":        "mp4",
+    "audio/wav":        "wav",
+    "audio/x-wav":      "wav",
+    "audio/wave":       "wav",
+    "audio/vnd.wav":    "wav",
+    "audio/m4a":        "m4a",
+    "audio/x-m4a":      "m4a",
+    "audio/webm":       "webm",
+    "audio/ogg":        "ogg",
+    "audio/opus":       "opus",
+    "video/mp4":        "mp4",
+    "video/webm":       "webm",
+    "video/quicktime":  "mov",
+    "video/x-matroska": "mkv",
 }
 
 AWS_MAX_UPLOAD_SIZE = 500 * 1024 * 1024

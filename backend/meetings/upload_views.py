@@ -2,6 +2,7 @@ import logging
 
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from config import settings
@@ -36,65 +37,95 @@ class RequestUploadURLView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, meeting_id):
+        try:
+            # 1. Find the meeting (tenant scoped)
+            meeting = get_meeting_or_404(meeting_id, request.user)
+            if not meeting:
+                return error_response(
+                    message="Meeting not found.",
+                    code="not_found",
+                    status_code=status.HTTP_404_NOT_FOUND,
+                )
 
-        # 1. Find the meeting (tenant scoped)
-        meeting = get_meeting_or_404(meeting_id, request.user)
-        if not meeting:
-            return error_response(
-                message="Meeting not found.",
-                code="not_found",
-                status_code=status.HTTP_404_NOT_FOUND,
+            # 2. Only manual upload meetings support file upload
+            if meeting.platform != Meeting.Platform.UPLOAD:
+                return error_response(
+                    message="File upload is only available for manual upload meetings.",
+                    code="invalid_platform",
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # 3. Cannot upload if already being processed
+            if meeting.status in (
+                Meeting.Status.PROCESSING,
+                Meeting.Status.COMPLETED,
+            ):
+                return error_response(
+                    message=f"Cannot upload — meeting is currently '{meeting.get_status_display()}'.",
+                    code="invalid_status",
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # 4. Validate request body through serializer
+            serializer = RequestUploadURLSerializer(data=request.data)
+            if not serializer.is_valid():
+                logger.error(
+                    "Upload URL request validation failed for meeting %s: %s (Raw data: %s)",
+                    meeting.id,
+                    serializer.errors,
+                    request.data
+                )
+                return error_response(
+                    message="A validation error occurred.",
+                    code="validation_error",
+                    errors=serializer.errors,
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # 5. Generate presigned URL from S3
+            result = generate_presigned_upload_url(
+                meeting_id   = str(meeting.id),
+                filename     = serializer.validated_data.get("filename", ""),
+                content_type = serializer.validated_data.get("content_type", "application/octet-stream"),
             )
 
-        # 2. Only manual upload meetings support file upload
-        if meeting.platform != Meeting.Platform.UPLOAD:
-            return error_response(
-                message="File upload is only available for manual upload meetings.",
-                code="invalid_platform",
-                status_code=status.HTTP_400_BAD_REQUEST,
+            # 6. Handle S3 failure
+            if not result:
+                return error_response(
+                    message="Could not generate upload URL. Please try again.",
+                    code="s3_error",
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                )
+
+            logger.info(
+                "Presigned upload URL generated for meeting %s by %s",
+                meeting.id,
+                request.user.email,
             )
 
-        # 3. Cannot upload if already being processed
-        if meeting.status in (
-            Meeting.Status.PROCESSING,
-            Meeting.Status.COMPLETED,
-        ):
-            return error_response(
-                message=f"Cannot upload — meeting is currently '{meeting.get_status_display()}'.",
-                code="invalid_status",
-                status_code=status.HTTP_400_BAD_REQUEST,
+            # Align with frontend expectation: 
+            # 1. Nest in 'data'
+            # 2. Provide 'url' alias for 'upload_url'
+            return Response(
+                {
+                    "success": True,
+                    "message": "Upload URL generated successfully.",
+                    "data": {
+                        "url": result["upload_url"],
+                        "key": result["s3_key"],
+                        "content_type": serializer.validated_data.get("content_type"),
+                        **result
+                    }
+                },
+                status=status.HTTP_200_OK,
             )
-
-        # 4. Validate request body through serializer
-        serializer = RequestUploadURLSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-
-        # 5. Generate presigned URL from S3
-        result = generate_presigned_upload_url(
-            meeting_id   = str(meeting.id),
-            filename     = serializer.validated_data["filename"],
-            content_type = serializer.validated_data["content_type"],
-        )
-
-        # 6. Handle S3 failure
-        if not result:
+        except Exception as exc:
+            logger.exception("FATAL error in RequestUploadURLView for meeting %s", meeting_id)
             return error_response(
-                message="Could not generate upload URL. Please try again.",
-                code="s3_error",
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                message="An internal server error occurred while preparing your upload. Please check backend logs.",
+                code="server_error",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
-
-        logger.info(
-            "Presigned upload URL generated for meeting %s by %s",
-            meeting.id,
-            request.user.email,
-        )
-
-        return success_response(
-            message="Upload URL generated. You have 15 minutes to complete the upload.",
-            data=result,
-            status_code=status.HTTP_200_OK,
-        )
 
 
 class ConfirmUploadView(APIView):

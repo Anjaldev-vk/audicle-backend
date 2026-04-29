@@ -45,7 +45,7 @@ def set_auth_cookies(response, refresh_token):
         httponly=True,
         secure=not settings.DEBUG, 
         samesite="Lax",      
-        path="/api/", 
+        path="/", 
         max_age=7 * 24 * 60 * 60 
     )
     return response
@@ -349,7 +349,7 @@ class LogoutView(APIView):
                 status_code=status.HTTP_200_OK
             )
             # Ensure path matches the setter exactly
-            response.delete_cookie("refresh_token", path="/api/")
+            response.delete_cookie("refresh_token", path="/")
             return response
         except TokenError:
             return error_response(
@@ -426,7 +426,7 @@ class ChangePasswordView(APIView):
             except TokenError:
                 pass
         
-        response.delete_cookie('refresh_token', path='/api/')
+        response.delete_cookie('refresh_token', path='/')
         return response
 
 
@@ -445,10 +445,10 @@ class OrganisationDetailView(APIView):
     @extend_schema(responses={200: OrganisationSerializer})
     def get(self, request, *args, **kwargs):
         if not request.user.organisation:
-            return error_response(
-                message="No organisation found.",
-                code="not_found",
-                status_code=status.HTTP_404_NOT_FOUND
+            return success_response(
+                message="User is an individual or has no organisation.",
+                data=None,
+                status_code=status.HTTP_200_OK
             )
         return success_response(
             message="Organisation retrieved successfully.",

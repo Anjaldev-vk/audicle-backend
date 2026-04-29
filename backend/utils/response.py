@@ -4,14 +4,7 @@ from rest_framework import status
 def success_response(message, data=None, status_code=status.HTTP_200_OK):
     """
     Standard success response format.
-    {
-        "success": True,
-        "message": "Human readable message.",
-        "data": {}
-    }
     """
-    if data is None:
-        data = {}
     return Response(
         {
             "success": True,

@@ -14,22 +14,77 @@ class RequestUploadURLSerializer(serializers.Serializer):
     """
     filename = serializers.CharField(
         max_length=255,
+        required=False,
         help_text="Original filename e.g. standup.mp3",
     )
     content_type = serializers.CharField(
         max_length=100,
+        required=False,
         help_text="MIME type e.g. audio/mpeg",
     )
     file_size = serializers.IntegerField(
         min_value=1,
+        required=False,
         help_text="File size in bytes",
     )
+
+    # Aliases for frontend flexibility
+    name      = serializers.CharField(required=False, write_only=True)
+    file_name = serializers.CharField(required=False, write_only=True)
+    type      = serializers.CharField(required=False, write_only=True)
+    size      = serializers.IntegerField(required=False, write_only=True)
+
+    def to_internal_value(self, data):
+        # Map aliases before validation
+        if hasattr(data, 'dict'): 
+            data = data.dict()
+        elif isinstance(data, dict):
+            data = data.copy()
+        else:
+            # If it's a list or other type, let super() handle it or raise
+            return super().to_internal_value(data)
+
+        # Handle nested 'file' object if present
+        if 'file' in data and isinstance(data['file'], dict):
+            file_data = data['file']
+            if 'name' in file_data:      data['filename']     = file_data['name']
+            if 'file_name' in file_data: data['filename']     = file_data['file_name']
+            if 'type' in file_data:      data['content_type'] = file_data['type']
+            if 'size' in file_data:      data['file_size']    = file_data['size']
+
+        if 'name' in data and 'filename' not in data:
+            data['filename'] = data['name']
+        if 'file_name' in data and 'filename' not in data:
+            data['filename'] = data['file_name']
+        if 'type' in data and 'content_type' not in data:
+            data['content_type'] = data['type']
+        if 'size' in data and 'file_size' not in data:
+            data['file_size'] = data['size']
+            
+        return super().to_internal_value(data)
+
+    def validate(self, attrs):
+        # Check required fields
+        missing = []
+        if not attrs.get('filename'):     missing.append('filename')
+        if not attrs.get('content_type'): missing.append('content_type')
+
+        if missing:
+            raise serializers.ValidationError({
+                field: "This field is required." for field in missing
+            })
+
+        return attrs
 
     def validate_content_type(self, value):
         """
         Only allow audio and video formats.
         Prevents users from uploading executables, scripts etc.
         """
+        if not value:
+            return value
+            
+        value = value.lower().strip()
         allowed = settings.AWS_ALLOWED_UPLOAD_TYPES
         if value not in allowed:
             raise serializers.ValidationError(
