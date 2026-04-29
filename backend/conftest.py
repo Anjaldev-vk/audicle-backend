@@ -3,11 +3,14 @@ import pytest
 from django.db import connection
 from rest_framework.test import APIClient
 from django.contrib.auth import get_user_model
-from accounts.models import Organisation, OrganisationInvite
 from django.utils import timezone
 from datetime import timedelta
 
-User = get_user_model()
+
+# ── anyio backend — required for @pytest.mark.anyio WebSocket tests ──────────
+@pytest.fixture(scope='session')
+def anyio_backend():
+    return 'asyncio'
 
 
 # -------------- pgvector: enable extension in test database before any test runs ----------------
@@ -28,10 +31,16 @@ def enable_pgvector(django_db_blocker):
 
 @pytest.fixture(autouse=True)
 def test_settings(settings):
-    """Ensure each test uses an isolated local memory cache."""
+    """Ensure each test uses an isolated local memory cache and in-memory channel layer."""
     settings.CACHES = {
         "default": {
             "BACKEND": "django.core.cache.backends.locmem.LocMemCache"
+        }
+    }
+    # Use InMemoryChannelLayer so WebSocket tests don't hang waiting for Redis
+    settings.CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels.layers.InMemoryChannelLayer",
         }
     }
 
@@ -77,6 +86,7 @@ def org_member_client(api_client, org_member):
 
 @pytest.fixture
 def individual_user(db):
+    User = get_user_model()
     return User.objects.create_user(
         email='individual@test.com',
         password='Password123!',
@@ -87,6 +97,7 @@ def individual_user(db):
 
 @pytest.fixture
 def organisation(db):
+    from accounts.models import Organisation
     return Organisation.objects.create(
         name='Test Org',
         slug='test-org',
@@ -96,6 +107,7 @@ def organisation(db):
 
 @pytest.fixture
 def org_admin(db, organisation):
+    User = get_user_model()
     return User.objects.create_user(
         email='admin@testorg.com',
         password='Password123!',
@@ -108,6 +120,7 @@ def org_admin(db, organisation):
 
 @pytest.fixture
 def org_member(db, organisation):
+    User = get_user_model()
     return User.objects.create_user(
         email='member@testorg.com',
         password='Password123!',
@@ -120,6 +133,7 @@ def org_member(db, organisation):
 
 @pytest.fixture
 def deactivated_user(db):
+    User = get_user_model()
     return User.objects.create_user(
         email='inactive@test.com',
         password='Password123!',
@@ -133,6 +147,7 @@ def deactivated_user(db):
 
 @pytest.fixture
 def valid_invite(db, organisation, org_admin):
+    from accounts.models import OrganisationInvite
     return OrganisationInvite.objects.create(
         organisation=organisation,
         invited_by=org_admin,
@@ -144,6 +159,7 @@ def valid_invite(db, organisation, org_admin):
 
 @pytest.fixture
 def expired_invite(db, organisation, org_admin):
+    from accounts.models import OrganisationInvite
     return OrganisationInvite.objects.create(
         organisation=organisation,
         invited_by=org_admin,
@@ -155,6 +171,7 @@ def expired_invite(db, organisation, org_admin):
 
 @pytest.fixture
 def accepted_invite(db, organisation, org_admin):
+    from accounts.models import OrganisationInvite
     return OrganisationInvite.objects.create(
         organisation=organisation,
         invited_by=org_admin,
