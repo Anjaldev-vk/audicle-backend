@@ -76,9 +76,9 @@ class BotRunner:
                     meeting_url=self.meeting_url,
                     audio_output_path=audio_path,
                     duration_cap=self.duration_cap,
+                    on_recording_started=lambda: self._post_status('recording'),
                 )
 
-                self._post_status('recording')
                 logger.info(
                     'Bot joining %s meeting %s',
                     self.platform,

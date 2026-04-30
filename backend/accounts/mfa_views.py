@@ -308,7 +308,7 @@ class DisableMFAView(APIView):
     """
     POST /api/v1/accounts/mfa/disable/
 
-    Intentional disable from security settings. Requires valid TOTP code.
+    Intentional disable from security settings.
     """
     permission_classes = [IsAuthenticated]
 
@@ -316,7 +316,7 @@ class DisableMFAView(APIView):
         serializer = DisableMFASerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        user      = request.user
+        user = request.user
         totp_code = serializer.validated_data["totp_code"]
 
         if not user.mfa_enabled:

@@ -38,9 +38,9 @@ class UserSerializer(serializers.ModelSerializer):
             'phone_number', 'job_title', 'timezone', 'avatar_url',
             'email_notifications', 'meeting_reminders',
             'is_verified', 'organisation', 'org_role',
-            'account_type', 'created_at',
+            'account_type', 'created_at', 'mfa_enabled'
         ]
-        read_only_fields = ['id', 'email', 'is_verified', 'created_at']
+        read_only_fields = ['id', 'email', 'is_verified', 'created_at', 'mfa_enabled']
 
     @extend_schema_field(serializers.CharField)
     def get_full_name(self, obj):

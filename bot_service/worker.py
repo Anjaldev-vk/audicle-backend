@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import threading
 from confluent_kafka import Consumer, KafkaError
 
 from bot_runner import BotRunner
@@ -14,6 +15,18 @@ KAFKA_GROUP         = os.environ.get('KAFKA_GROUP', 'bot-service-group')
 BOT_TOPIC           = os.environ.get('BOT_TOPIC', 'bot_tasks')
 DJANGO_INTERNAL_URL = os.environ.get('DJANGO_INTERNAL_URL', 'http://backend:8000')
 INTERNAL_API_SECRET = os.environ.get('INTERNAL_API_SECRET', 'change-me')
+
+
+def run_bot_in_thread(message: dict) -> None:
+    """Launch the bot pipeline in a daemon thread so Kafka consumer keeps polling."""
+    thread = threading.Thread(
+        target=process_bot_message,
+        args=(message,),
+        daemon=True,
+        name=f"bot-{message.get('meeting_id', 'unknown')[:8]}",
+    )
+    thread.start()
+    logger.info('Bot thread started for meeting %s', message.get('meeting_id'))
 
 
 def process_bot_message(message: dict) -> None:
@@ -71,9 +84,13 @@ def _post_bot_failed(meeting_id: str, reason: str) -> None:
 
 def main():
     consumer = Consumer({
-        'bootstrap.servers': KAFKA_BROKER,
-        'group.id':          KAFKA_GROUP,
-        'auto.offset.reset': 'earliest',
+        'bootstrap.servers':    KAFKA_BROKER,
+        'group.id':             KAFKA_GROUP,
+        'auto.offset.reset':    'earliest',
+        # Allow very long processing time — bots can run for hours
+        'max.poll.interval.ms': 86400000,  # 24 hours
+        'session.timeout.ms':   60000,     # 60 seconds heartbeat window
+        'heartbeat.interval.ms': 20000,    # heartbeat every 20s
     })
 
     consumer.subscribe([BOT_TOPIC])
@@ -91,7 +108,8 @@ def main():
                 continue
             try:
                 message = json.loads(msg.value().decode('utf-8'))
-                process_bot_message(message)
+                # Run bot in a thread — keeps Kafka consumer alive during long recordings
+                run_bot_in_thread(message)
             except json.JSONDecodeError as exc:
                 logger.error('Invalid JSON: %s', exc)
             except Exception as exc:

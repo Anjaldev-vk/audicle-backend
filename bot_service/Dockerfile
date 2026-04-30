@@ -5,6 +5,10 @@ RUN apt-get update && apt-get install -y \
     ffmpeg \
     wget \
     gnupg \
+    pulseaudio \
+    pulseaudio-utils \
+    xvfb \
+    dbus-x11 \
     libnss3 \
     libatk1.0-0 \
     libatk-bridge2.0-0 \
@@ -40,7 +44,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Install Playwright chromium browser
 RUN playwright install chromium
 
-
 COPY . .
 
-CMD ["python", "worker.py"]
+# Make entrypoint executable
+RUN chmod +x entrypoint.sh
+
+CMD ["bash", "entrypoint.sh"]

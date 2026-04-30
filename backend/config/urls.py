@@ -32,11 +32,11 @@ urlpatterns = [
 #---------------------------------- Accounts API ----------------------------------
     path('api/<str:version>/accounts/', include('accounts.urls')),
 
-#---------------------------------- Meetings API ----------------------------------
-    path('api/v1/meetings/', include('meetings.urls', namespace='meetings')),
-
 #---------------------------------- Transcripts API ----------------------------------
     path("api/v1/", include("transcripts.urls", namespace="transcripts")),
+
+#---------------------------------- Meetings API ----------------------------------
+    path('api/v1/meetings/', include('meetings.urls', namespace='meetings')),
 
 #---------------------------------- RAG API ----------------------------------
     path('api/v1/rag/', include('rag.urls')),
