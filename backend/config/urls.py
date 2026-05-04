@@ -41,6 +41,9 @@ urlpatterns = [
 #---------------------------------- RAG API ----------------------------------
     path('api/v1/rag/', include('rag.urls')),
 
+#---------------------------------- Notifications API ----------------------------------
+    path('api/v1/notifications/', include('notifications.urls')),
+
 #------------------------------------ internal  ------------------------------------
     path('internal/', include(rag_urls.internal_urlpatterns)),
     path('internal/bot/status/', BotStatusView.as_view(), name='internal-bot-status'),

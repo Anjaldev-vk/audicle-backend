@@ -10,12 +10,18 @@ django_asgi_app = get_asgi_application()
 
 from meetings.routing import websocket_urlpatterns
 from meetings.middleware import JWTAuthMiddlewareStack
+from django.urls import path
+from notifications.consumers import NotificationConsumer
 
 application = ProtocolTypeRouter(
     {
         "http": django_asgi_app,
         "websocket": JWTAuthMiddlewareStack(
-            URLRouter(websocket_urlpatterns)
+            URLRouter(
+                websocket_urlpatterns + [
+                    path('ws/v1/notifications/', NotificationConsumer.as_asgi()),
+                ]
+            )
         ),
     }
 )

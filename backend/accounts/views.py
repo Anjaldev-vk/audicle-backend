@@ -38,6 +38,7 @@ from utils.cache_keys import (
     invalidate_user_cache, invalidate_org_cache,
 )
 from utils.pagination import StandardPagination
+from notifications.tasks import notify_invite_accepted
 
 logger = logging.getLogger(__name__)
 
@@ -810,6 +811,15 @@ class InviteAcceptView(generics.GenericAPIView):
             # Signal fires → invalidates user + org cache automatically
             invite.status = OrganisationInvite.Status.ACCEPTED
             invite.save(update_fields=['status'])
+
+        # Notify the inviter
+        from notifications.tasks import notify_invite_accepted
+        notify_invite_accepted.delay(
+            user_id=str(invite.invited_by.id),
+            invitee_email=invite.email,
+            org_name=invite.organisation.name,
+            workspace_id=str(invite.organisation.id),
+        )
 
         logger.info(
             'invite accepted org=%s user=%s',

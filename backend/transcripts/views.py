@@ -22,6 +22,7 @@ from utils.kafka_producer import send_transcription_task, send_summarization_tas
 from utils.response import error_response, success_response
 from utils.permissions import IsInternalService
 from utils.pagination import StandardPagination
+from notifications.tasks import notify_transcription_done, notify_summary_done
 
 logger = logging.getLogger("transcripts")
 
@@ -264,6 +265,14 @@ class InternalTranscriptCompleteView(APIView):
                     # Update meeting status
                     meeting.status = Meeting.Status.COMPLETED
                     meeting.save(update_fields=["status"])
+
+                    # Notify the user that transcription is done
+                    notify_transcription_done.delay(
+                        user_id=str(meeting.created_by.id),
+                        meeting_id=str(meeting.id),
+                        meeting_title=meeting.title,
+                        workspace_id=str(meeting.organisation.id) if meeting.organisation else None,
+                    )
 
                     logger.info(
                         "Transcript completed for meeting %s — %d segments, %d words",
@@ -711,6 +720,14 @@ class InternalSummaryCompleteView(APIView):
                     summary.next_steps = data.get("next_steps", [])
                     summary.error_message = None
                     summary.save()
+
+                    # Notify the user that summary is done
+                    notify_summary_done.delay(
+                        user_id=str(meeting.created_by.id),
+                        meeting_id=str(meeting.id),
+                        meeting_title=meeting.title,
+                        workspace_id=str(meeting.organisation.id) if meeting.organisation else None,
+                    )
 
                     logger.info(
                         "Summary saved for meeting %s — %d action items %d decisions",

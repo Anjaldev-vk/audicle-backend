@@ -9,6 +9,7 @@ from meetings.internal_serializers import BotStatusSerializer
 from meetings.models import Meeting
 from utils.response import error_response, success_response
 from utils.permissions import IsInternalService
+from notifications.tasks import notify_meeting_started, notify_bot_failed
 
 logger = logging.getLogger("meetings")
 
@@ -77,6 +78,14 @@ class BotStatusView(APIView):
                 "BotStatusView: bot recording meeting %s", meeting_id
             )
 
+            # Notify the user that the bot has joined and recording has started
+            notify_meeting_started.delay(
+                user_id=str(meeting.created_by.id),
+                meeting_id=str(meeting.id),
+                meeting_title=meeting.title,
+                workspace_id=str(meeting.organisation.id) if meeting.organisation else None,
+            )
+
         elif new_status == Meeting.Status.PROCESSING:
             meeting.status = Meeting.Status.PROCESSING
             if audio_s3_key:
@@ -108,6 +117,14 @@ class BotStatusView(APIView):
                 "BotStatusView: bot failed for meeting %s — %s",
                 meeting_id,
                 error_message,
+            )
+
+            # Notify the user that the bot failed to join
+            notify_bot_failed.delay(
+                user_id=str(meeting.created_by.id),
+                meeting_id=str(meeting.id),
+                meeting_title=meeting.title,
+                workspace_id=str(meeting.organisation.id) if meeting.organisation else None,
             )
 
         # ── 5. Save + respond ─────────────────────────────────────────────────

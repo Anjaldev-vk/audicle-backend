@@ -67,6 +67,7 @@ INSTALLED_APPS = [
     'meetings',
     'transcripts',
     'rag',
+    'notifications',
     'channels',
 ]
 
@@ -418,3 +419,10 @@ CHANNEL_LAYERS = {
         },
     }
 }
+
+# ------------- DynamoDB -----------------------
+DYNAMODB_REGION = os.environ.get('AWS_DYNAMODB_REGION', 'ap-south-1')
+DYNAMODB_NOTIFICATIONS_TABLE = os.environ.get(
+    'DYNAMODB_NOTIFICATIONS_TABLE',
+    'audicle_notifications'
+)
