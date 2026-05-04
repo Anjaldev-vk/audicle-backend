@@ -21,6 +21,7 @@ from transcripts.utils import get_transcript_for_meeting
 from utils.kafka_producer import send_transcription_task, send_summarization_task, send_embedding_task
 from utils.response import error_response, success_response
 from utils.permissions import IsInternalService
+from utils.pagination import StandardPagination
 
 logger = logging.getLogger("transcripts")
 
@@ -38,7 +39,7 @@ class TranscriptDetailView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, meeting_id):
-        transcript = get_transcript_for_meeting(meeting_id, request.user)
+        transcript = get_transcript_for_meeting(meeting_id, request.user, request.organisation)
         if not transcript:
             return error_response(
                 message="Transcript not found.",
@@ -52,7 +53,7 @@ class TranscriptDetailView(APIView):
         )
 
     def delete(self, request, meeting_id):
-        transcript = get_transcript_for_meeting(meeting_id, request.user)
+        transcript = get_transcript_for_meeting(meeting_id, request.user, request.organisation)
         if not transcript:
             return error_response(
                 message="Transcript not found.",
@@ -76,13 +77,14 @@ class TranscriptSegmentListView(APIView):
     """
     GET /api/v1/meetings/<meeting_id>/transcript/segments/
 
-    Returns all transcript segments ordered by start_seconds.
+    Returns all transcript segments ordered by start_seconds (paginated).
     Segments are the individual timestamped lines of the transcript.
     """
     permission_classes = [IsAuthenticated]
+    pagination_class = StandardPagination
 
     def get(self, request, meeting_id):
-        transcript = get_transcript_for_meeting(meeting_id, request.user)
+        transcript = get_transcript_for_meeting(meeting_id, request.user, request.organisation)
         if not transcript:
             return error_response(
                 message="Transcript not found.",
@@ -91,17 +93,12 @@ class TranscriptSegmentListView(APIView):
             )
 
         segments = transcript.segments.all()
-        serializer = TranscriptSegmentListSerializer(segments, many=True)
+        
+        paginator = self.pagination_class()
+        page = paginator.paginate_queryset(segments, request)
+        serializer = TranscriptSegmentListSerializer(page, many=True)
 
-        return success_response(
-            message="Segments retrieved successfully.",
-            data={
-                "transcript_id": str(transcript.id),
-                "total_segments": segments.count(),
-                "segments": serializer.data,
-            },
-            status_code=status.HTTP_200_OK,
-        )
+        return paginator.get_paginated_response(serializer.data)
 
 
 class TranscriptRetryView(APIView):
@@ -115,7 +112,7 @@ class TranscriptRetryView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, meeting_id):
-        transcript = get_transcript_for_meeting(meeting_id, request.user)
+        transcript = get_transcript_for_meeting(meeting_id, request.user, request.organisation)
         if not transcript:
             return error_response(
                 message="Transcript not found.",
@@ -374,7 +371,7 @@ class SummaryDetailView(APIView):
 
     def _get_meeting(self, meeting_id, user):
         """Helper — get meeting scoped to user tenant."""
-        meeting = get_meeting_or_404(meeting_id, user)
+        meeting = get_meeting_or_404(meeting_id, user, getattr(self.request, 'organisation', None))
         if not meeting:
             return None, error_response(
                 message="Meeting not found.",
@@ -446,7 +443,7 @@ class SummaryRetryView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, meeting_id):
-        meeting = get_meeting_or_404(meeting_id, request.user)
+        meeting = get_meeting_or_404(meeting_id, request.user, request.organisation)
         if not meeting:
             return error_response(
                 message="Meeting not found.",
@@ -556,7 +553,7 @@ class SummaryTranslateView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, meeting_id):
-        meeting = get_meeting_or_404(meeting_id, request.user)
+        meeting = get_meeting_or_404(meeting_id, request.user, request.organisation)
         if not meeting:
             return error_response(
                 message="Meeting not found.",

@@ -8,6 +8,7 @@ from rest_framework import status
 from transcripts.models import Transcript
 from utils.response import success_response, error_response
 from utils.ai_client import get_ai_provider
+from utils.pagination import StandardPagination
 from .models import EmbeddingChunk, ChatSession, ChatMessage
 from .serializers import (
     RAGSearchSerializer,
@@ -58,6 +59,7 @@ class RAGSearchView(APIView):
 
         chunks = search_similar_chunks(
             user=request.user,
+            organisation=request.organisation,
             query_embedding=query_embedding,
             meeting_id=meeting_id,
             limit=limit
@@ -98,28 +100,25 @@ class RAGSearchView(APIView):
 
 class ChatSessionListCreateView(APIView):
     permission_classes = [IsAuthenticated]
+    pagination_class = StandardPagination
 
     def get(self, request):
-        if request.user.organisation:
-            sessions = ChatSession.objects.filter(
-                user=request.user
-            ).prefetch_related('messages')
-        else:
-            sessions = ChatSession.objects.filter(
-                user=request.user
-            ).prefetch_related('messages')
+        sessions = ChatSession.objects.filter(
+            user=request.user,
+            organisation=request.organisation
+        ).prefetch_related('messages').order_by('-updated_at')
 
-        serializer = ChatSessionListSerializer(sessions, many=True)
-        return success_response(
-            message='Chat sessions retrieved',
-            data=serializer.data
-        )
+        paginator = self.pagination_class()
+        page = paginator.paginate_queryset(sessions, request)
+        serializer = ChatSessionListSerializer(page, many=True)
+        
+        return paginator.get_paginated_response(serializer.data)
 
     def post(self, request):
         with transaction.atomic():
             session = ChatSession.objects.create(
                 user=request.user,
-                organisation=request.user.organisation
+                organisation=request.organisation
             )
 
         logger.info('Chat session created for user %s', request.user.id)
@@ -245,6 +244,7 @@ class ChatMessageCreateView(APIView):
         # Retrieve relevant chunks
         chunks = search_similar_chunks(
             user=request.user,
+            organisation=request.organisation,
             query_embedding=query_embedding,
             meeting_id=meeting_id,
             limit=5

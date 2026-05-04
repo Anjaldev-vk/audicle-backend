@@ -149,6 +149,7 @@ class MeetingParticipant(models.Model):
     class Meta:
         # One participant entry per user per meeting
         unique_together = [["meeting", "email"]]
+        ordering = ["joined_at", "id"]
         indexes = [
             models.Index(fields=["meeting"]),
             models.Index(fields=["user"]),

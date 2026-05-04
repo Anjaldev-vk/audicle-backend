@@ -12,6 +12,8 @@ class TestProfile:
         assert response.status_code == 200
         assert response.data['data']['email'] == 'individual@test.com'
         assert response.data['data']['account_type'] == 'individual'
+        assert 'workspaces' in response.data['data']
+        assert response.data['data']['active_workspace'] == 'personal'
 
     def test_get_profile_unauthenticated(self, api_client):
         response = api_client.get(ME_URL)

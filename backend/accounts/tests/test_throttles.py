@@ -1,7 +1,7 @@
 import pytest
 from django.urls import reverse
-from django.test import override_settings
 from rest_framework.test import APIClient
+from unittest.mock import patch
 
 @pytest.fixture
 def client():
@@ -20,11 +20,12 @@ class TestRegisterThrottle:
             "last_name": "User",
             "account_type": "individual",
         }
-        for i in range(5):
-            client.post(url, payload, format="json")
+        with patch('rest_framework.throttling.ScopedRateThrottle.get_rate', return_value='5/min'):
+            for i in range(5):
+                client.post(url, payload, format="json")
 
-        response = client.post(url, payload, format="json")
-        assert response.status_code == 429
+            response = client.post(url, payload, format="json")
+            assert response.status_code == 429
 
     def test_register_429_matches_standard_format(self, client):
         url = reverse("register", kwargs={"version": "v1"})
@@ -36,17 +37,18 @@ class TestRegisterThrottle:
             "last_name": "User",
             "account_type": "individual",
         }
-        for _ in range(5):
-            client.post(url, payload, format="json")
+        with patch('rest_framework.throttling.ScopedRateThrottle.get_rate', return_value='5/min'):
+            for _ in range(5):
+                client.post(url, payload, format="json")
 
-        response = client.post(url, payload, format="json")
-        assert response.status_code == 429
-        data = response.json()
-        assert data["status"] == "error"
-        assert data["code"] == "throttled"
-        assert "message" in data
-        assert "errors" in data
-        assert "Retry-After" in response
+            response = client.post(url, payload, format="json")
+            assert response.status_code == 429
+            data = response.json()
+            assert data["status"] == "error"
+            assert data["code"] == "throttled"
+            assert "message" in data
+            assert "errors" in data
+            assert "Retry-After" in response
 
 
 @pytest.mark.django_db
@@ -55,20 +57,22 @@ class TestLoginThrottle:
     def test_login_blocks_on_6th_request(self, client):
         url = reverse("login", kwargs={"version": "v1"})
         payload = {"email": "any@example.com", "password": "wrong"}
-        for _ in range(5):
-            client.post(url, payload, format="json")
+        with patch('rest_framework.throttling.ScopedRateThrottle.get_rate', return_value='5/min'):
+            for _ in range(5):
+                client.post(url, payload, format="json")
 
-        response = client.post(url, payload, format="json")
-        assert response.status_code == 429
+            response = client.post(url, payload, format="json")
+            assert response.status_code == 429
 
     def test_login_429_has_retry_after_header(self, client):
         url = reverse("login", kwargs={"version": "v1"})
         payload = {"email": "any@example.com", "password": "wrong"}
-        for _ in range(5):
-            client.post(url, payload, format="json")
+        with patch('rest_framework.throttling.ScopedRateThrottle.get_rate', return_value='5/min'):
+            for _ in range(5):
+                client.post(url, payload, format="json")
 
-        response = client.post(url, payload, format="json")
-        assert "Retry-After" in response
+            response = client.post(url, payload, format="json")
+            assert "Retry-After" in response
 
 
 @pytest.mark.django_db
@@ -77,11 +81,12 @@ class TestPasswordResetThrottle:
     def test_password_reset_blocks_on_6th_request(self, client):
         url = reverse("password_reset_request", kwargs={"version": "v1"})
         payload = {"email": "any@example.com"}
-        for _ in range(5):
-            client.post(url, payload, format="json")
+        with patch('rest_framework.throttling.ScopedRateThrottle.get_rate', return_value='5/min'):
+            for _ in range(5):
+                client.post(url, payload, format="json")
 
-        response = client.post(url, payload, format="json")
-        assert response.status_code == 429
+            response = client.post(url, payload, format="json")
+            assert response.status_code == 429
 
 
 @pytest.mark.django_db
@@ -92,21 +97,22 @@ class TestThrottleIsolation:
         url = reverse("login", kwargs={"version": "v1"})
         payload = {"email": "any@example.com", "password": "wrong"}
 
-        # Exhaust limit for IP 1
-        for _ in range(5):
-            client.post(
+        with patch('rest_framework.throttling.ScopedRateThrottle.get_rate', return_value='5/min'):
+            # Exhaust limit for IP 1
+            for _ in range(5):
+                client.post(
+                    url, payload, format="json",
+                    REMOTE_ADDR="1.2.3.4"
+                )
+            blocked = client.post(
                 url, payload, format="json",
                 REMOTE_ADDR="1.2.3.4"
             )
-        blocked = client.post(
-            url, payload, format="json",
-            REMOTE_ADDR="1.2.3.4"
-        )
-        assert blocked.status_code == 429
+            assert blocked.status_code == 429
 
-        # IP 2 should still be allowed
-        allowed = client.post(
-            url, payload, format="json",
-            REMOTE_ADDR="5.6.7.8"
-        )
-        assert allowed.status_code != 429
+            # IP 2 should still be allowed
+            allowed = client.post(
+                url, payload, format="json",
+                REMOTE_ADDR="5.6.7.8"
+            )
+            assert allowed.status_code != 429

@@ -4,21 +4,21 @@ from channels.layers import get_channel_layer
 from channels.db import database_sync_to_async
 from asgiref.sync import async_to_sync
 from config.asgi import application
-from accounts.models import User, Organisation
+from accounts.models import User, Organisation, Membership
 from meetings.consumers import meeting_group_name
 
 # Helpers
 def make_user(email="ws@test.com"):
     org = Organisation.objects.create(name="WS Org", slug="ws-org")
-    return User.objects.create_user(
+    user = User.objects.create_user(
         email=email,
         password="pass",
-        organisation=org,
         is_verified=True,
         first_name="WS",
         last_name="User",
-        org_role=User.OrgRole.MEMBER
-    ), org
+    )
+    Membership.objects.create(user=user, organisation=org, role="member")
+    return user, org
 
 def get_jwt(user):
     from rest_framework_simplejwt.tokens import RefreshToken
@@ -47,6 +47,8 @@ class TestMeetingConsumer:
             application, "/ws/v1/meetings/00000000-0000-0000-0000-000000000001/?token=bad"
         )
         connected, code = await comm.connect()
+        # Depending on how the consumer handles it, it might connect then close
+        # or reject during handshake.
         assert not connected or code == 4001
 
     async def test_receives_status_push(self):

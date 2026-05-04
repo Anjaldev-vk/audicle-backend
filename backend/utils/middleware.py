@@ -8,25 +8,7 @@ logger = logging.getLogger("django")
 
 
 class RequestLoggingMiddleware(MiddlewareMixin):
-    """
-    Logs every HTTP request and response with:
-    - A unique request_id for end-to-end tracing
-    - HTTP method and path
-    - Response status code
-    - Request duration in milliseconds
-    - Authenticated user email (or 'anonymous')
-
-    Log levels:
-        INFO    → 2xx and 3xx responses
-        WARNING → 4xx responses
-        ERROR   → 5xx responses and unhandled exceptions
-    """
-
     def process_request(self, request):
-        """
-        Runs BEFORE the view.
-        Stamps request_id and start_time onto the request object.
-        """
         request.request_id = str(uuid.uuid4())[:8]
         request.start_time = time.time()
 
@@ -39,18 +21,12 @@ class RequestLoggingMiddleware(MiddlewareMixin):
         )
 
     def process_response(self, request, response):
-        """
-        Runs AFTER the view returns a response.
-        Logs status code and total duration.
-        Always returns the response — never blocks it.
-        """
         request_id  = getattr(request, "request_id", "unknown")
         start_time  = getattr(request, "start_time", time.time())
         duration_ms = int((time.time() - start_time) * 1000)
         status_code = response.status_code
         user        = self._get_user(request)
 
-        # Choose log level based on status code
         if status_code >= 500:
             log_fn = logger.error
         elif status_code >= 400:
@@ -68,21 +44,11 @@ class RequestLoggingMiddleware(MiddlewareMixin):
             user,
         )
 
-        # Attach request_id to response header
-        # Frontend and Nginx can log this for end-to-end tracing
         response["X-Request-ID"] = request_id
-
         return response
 
     def process_exception(self, request, exception):
-        """
-        Runs if the view raises an unhandled exception.
-        Logs the full traceback with request context.
-        Returning None lets Django continue its normal
-        exception handling — does not suppress the error.
-        """
         request_id = getattr(request, "request_id", "unknown")
-
         logger.error(
             "[req=%s] EXCEPTION %s %s user=%s error=%s",
             request_id,
@@ -90,19 +56,12 @@ class RequestLoggingMiddleware(MiddlewareMixin):
             request.path,
             self._get_user(request),
             str(exception),
-            exc_info=True,    # includes full traceback
+            exc_info=True,
         )
-
         return None
 
     @staticmethod
     def _get_user(request) -> str:
-        """
-        Safely extract user identifier from the request.
-        Returns email if authenticated, 'anonymous' otherwise.
-        Wrapped in try/except because this runs before
-        authentication middleware on the first pass.
-        """
         try:
             if hasattr(request, "user") and request.user.is_authenticated:
                 return request.user.email
@@ -111,33 +70,45 @@ class RequestLoggingMiddleware(MiddlewareMixin):
         return "anonymous"
 
 
-class TenantMiddleware(MiddlewareMixin):
-    """
-    Resolves the current tenant (Organisation) from the authenticated user
-    and attaches it to the request object for use in views.
+class WorkspaceMiddleware:
+    def __init__(self, get_response):
+        self.get_response = get_response
 
-    Sets:
-        request.organisation  → Organisation instance (or None for individual users)
-        request.is_org_user   → True if user belongs to an organisation
-
-    This allows views to scope queries without repeating
-    user.organisation lookups everywhere.
-
-    Skips:
-        - Unauthenticated requests (anonymous users)
-        - Requests where user has no organisation (individual users)
-    """
-
-    def process_request(self, request):
+    def __call__(self, request):
         request.organisation = None
-        request.is_org_user = False
+        request.membership = None
+        request.workspace_type = 'personal'
 
-        try:
-            if hasattr(request, "user") and request.user.is_authenticated:
-                org = getattr(request.user, "organisation", None)
-                if org is not None:
-                    request.organisation = org
-                    request.is_org_user = True
-        except Exception:
-            # Never block the request — log silently and continue
-            pass
+        # 1. Resolve User (Django session or JWT)
+        user = getattr(request, 'user', None)
+        if not (user and user.is_authenticated):
+            # Try manual JWT authentication for API requests
+            from rest_framework_simplejwt.authentication import JWTAuthentication
+            try:
+                auth = JWTAuthentication().authenticate(request)
+                if auth:
+                    request.user = auth[0]
+                    user = request.user
+            except Exception:
+                pass
+
+        # 2. Resolve Workspace if authenticated
+        if user and user.is_authenticated:
+            workspace_id = request.headers.get('X-Workspace-ID', 'personal')
+            
+            if workspace_id and workspace_id != 'personal':
+                try:
+                    from accounts.models import Membership
+                    membership = Membership.objects.select_related(
+                        'organisation'
+                    ).get(
+                        user=user,
+                        organisation_id=workspace_id
+                    )
+                    request.organisation = membership.organisation
+                    request.membership = membership
+                    request.workspace_type = 'organisation'
+                except Exception:
+                    pass
+
+        return self.get_response(request)

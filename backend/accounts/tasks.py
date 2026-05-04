@@ -111,23 +111,25 @@ def cleanup_expired_otps_task():
 @shared_task
 def reset_monthly_usage_task():
     """
-    Runs on the 1st of every month at midnight UTC via Celery Beat.
-    Resets meetings_this_month to 0 and updates usage_reset_date
-    for all organisations.
+    Resets monthly meeting usage for users and organisations whose 
+    reset date has been reached.
     """
-    from accounts.models import Organisation
-    from django.utils.timezone import now
+    from accounts.models import User, Organisation
+    from datetime import date
+    today = date.today()
 
-    today = now().date()
-    updated = Organisation.objects.all().update(
-        meetings_this_month=0,
-        usage_reset_date=today,
-    )
+    user_count = User.objects.filter(
+        usage_reset_date__lte=today
+    ).update(meetings_this_month=0)
+
+    org_count = Organisation.objects.filter(
+        usage_reset_date__lte=today
+    ).update(meetings_this_month=0)
 
     logger.info(
-        f"[Celery Beat] reset_monthly_usage_task: reset {updated} organisation(s) on {today}."
+        f"[Celery Beat] reset_monthly_usage_task: reset {user_count} users and {org_count} organisations."
     )
-    return f"Reset {updated} organisations"
+    return f"Reset {user_count} users and {org_count} organisations"
 
 
 @shared_task(

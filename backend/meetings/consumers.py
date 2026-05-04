@@ -91,9 +91,12 @@ class MeetingConsumer(AsyncWebsocketConsumer):
     @database_sync_to_async
     def check_meeting_access(self, user, meeting_id):
         from meetings.models import Meeting
-        qs = Meeting.objects.filter(pk=meeting_id, is_archived=False)
-        if user.organisation:
-            qs = qs.filter(organisation=user.organisation)
-        else:
-            qs = qs.filter(created_by=user)
-        return qs.exists()
+        from django.db.models import Q
+        
+        # Check if user is creator or belongs to the organization the meeting is in
+        org_ids = user.memberships.values_list('organisation_id', flat=True)
+        
+        return Meeting.objects.filter(
+            Q(pk=meeting_id, is_archived=False) &
+            (Q(created_by=user, organisation=None) | Q(organisation_id__in=org_ids))
+        ).exists()

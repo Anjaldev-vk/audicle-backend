@@ -6,17 +6,27 @@ from django.conf import settings
 logger = logging.getLogger(__name__)
 
 # Kafka configuration
-# In Docker, the bootstrap server is 'kafka:29092'
 KAFKA_CONFIG = {
     'bootstrap.servers': 'kafka:29092',
     'client.id': 'django-backend'
 }
 
-producer = Producer(KAFKA_CONFIG)
+_producer = None
 
 
 def get_producer():
-    return producer
+    global _producer
+    if _producer is None:
+        try:
+            _producer = Producer(KAFKA_CONFIG)
+        except Exception as e:
+            logger.error("Failed to initialize Kafka producer: %s", e)
+            # In testing or if Kafka is down, we might want a dummy producer
+            class DummyProducer:
+                def produce(self, *args, **kwargs): pass
+                def flush(self, *args, **kwargs): pass
+            _producer = DummyProducer()
+    return _producer
 
 
 def delivery_report(err, msg):
@@ -42,13 +52,14 @@ def send_transcription_task(meeting_id, file_path, user_id):
         'status':     'pending',
     }
     try:
-        producer.produce(
+        p = get_producer()
+        p.produce(
             'transcription_tasks',
             key=str(meeting_id),
             value=json.dumps(task_data).encode('utf-8'),
             callback=delivery_report,
         )
-        producer.flush()
+        p.flush()
         return True
     except Exception as e:
         logger.error('Error sending transcription task to Kafka: %s', e)
@@ -58,23 +69,23 @@ def send_transcription_task(meeting_id, file_path, user_id):
 def send_summarization_task(meeting_id: str, transcript_text: str) -> None:
     """
     Send summarization task to summarization_tasks Kafka topic.
-    Called automatically after transcript is saved.
     """
     message = {
         "meeting_id":      meeting_id,
         "transcript_text": transcript_text,
     }
-    producer.produce(
-        topic    = "summarization_tasks",
-        key      = meeting_id,
-        value    = json.dumps(message).encode("utf-8"),
-        callback = delivery_report,
-    )
-    producer.flush()
-    logger.info(
-        "Summarization task sent for meeting %s",
-        meeting_id,
-    )
+    try:
+        p = get_producer()
+        p.produce(
+            topic    = "summarization_tasks",
+            key      = meeting_id,
+            value    = json.dumps(message).encode("utf-8"),
+            callback = delivery_report,
+        )
+        p.flush()
+        logger.info("Summarization task sent for meeting %s", meeting_id)
+    except Exception as e:
+        logger.error("Error sending summarization task: %s", e)
 
 
 def send_bot_task(
@@ -85,7 +96,6 @@ def send_bot_task(
 ) -> bool:
     """
     Send a bot dispatch message to the 'bot_tasks' Kafka topic.
-    Consumed by bot_service/worker.py → BotRunner.
     """
     message = {
         "meeting_id":   meeting_id,
@@ -94,13 +104,14 @@ def send_bot_task(
         "duration_cap": duration_cap,
     }
     try:
-        producer.produce(
+        p = get_producer()
+        p.produce(
             topic    = "bot_tasks",
             key      = meeting_id,
             value    = json.dumps(message).encode("utf-8"),
             callback = delivery_report,
         )
-        producer.flush()
+        p.flush()
         logger.info("Bot task sent for meeting %s", meeting_id)
         return True
     except Exception as exc:
@@ -115,23 +126,21 @@ def send_embedding_task(
 ) -> None:
     """
     Send embedding task to embedding_tasks Kafka topic.
-    Called automatically after transcript is saved.
-    ai_worker chunks the text, embeds it, and POSTs
-    vectors to /internal/rag/embed/.
     """
     message = {
         "transcript_id": transcript_id,
         "raw_text":      raw_text,
         "segments":      segments,
     }
-    producer.produce(
-        topic    = "embedding_tasks",
-        key      = transcript_id,
-        value    = json.dumps(message).encode("utf-8"),
-        callback = delivery_report,
-    )
-    producer.flush()
-    logger.info(
-        "Embedding task sent for transcript %s",
-        transcript_id,
-    )
+    try:
+        p = get_producer()
+        p.produce(
+            topic    = "embedding_tasks",
+            key      = transcript_id,
+            value    = json.dumps(message).encode("utf-8"),
+            callback = delivery_report,
+        )
+        p.flush()
+        logger.info("Embedding task sent for transcript %s", transcript_id)
+    except Exception as e:
+        logger.error("Error sending embedding task: %s", e)

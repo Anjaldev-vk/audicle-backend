@@ -81,7 +81,7 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 
     "utils.middleware.RequestLoggingMiddleware",
-    "utils.middleware.TenantMiddleware",
+    "utils.middleware.WorkspaceMiddleware",
 ]
 
 ROOT_URLCONF = 'config.urls'
@@ -116,6 +116,18 @@ DATABASES = {
         'PASSWORD': os.environ.get('DB_PASSWORD'),
         'HOST': os.environ.get('DB_HOST'),
         'PORT': os.environ.get('DB_PORT'),
+    }
+}
+
+CACHES = {
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": "redis://redis:6379/1",
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+        },
+        "KEY_PREFIX": "audicle",
+        "TIMEOUT": 300,
     }
 }
 
@@ -193,6 +205,10 @@ REST_FRAMEWORK = {
     'ALLOWED_VERSIONS': ['v1', 'v2'],
     'VERSION_PARAM': 'version',
     'EXCEPTION_HANDLER': 'utils.exception_handler.custom_exception_handler',
+
+    # --- Pagination ---
+    'DEFAULT_PAGINATION_CLASS': 'utils.pagination.StandardPagination',
+    'PAGE_SIZE': 20,
 }
 
 SPECTACULAR_SETTINGS = {

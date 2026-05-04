@@ -15,51 +15,22 @@ from transcripts.models import Transcript
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
 @pytest.fixture
-def org():
-    return Organisation.objects.create(name="Test Org", slug="test-org")
-
-
-@pytest.fixture
-def user(org):
-    return User.objects.create_user(
-        email="rag@test.com",
-        password="testpass123",
-        first_name="Test",
-        last_name="User",
-        organisation=org,
-        org_role="member",
-        is_verified=True,
-    )
-
-
-@pytest.fixture
-def individual_user():
-    return User.objects.create_user(
-        email="individual@test.com",
-        password="testpass123",
-        first_name="Individual",
-        last_name="User",
-        is_verified=True,
-    )
-
-
-@pytest.fixture
-def meeting(org, user):
+def meeting(organisation, org_admin):
     return Meeting.objects.create(
         title="Test Meeting",
         platform=Meeting.Platform.UPLOAD,
         status=Meeting.Status.COMPLETED,
-        organisation=org,
-        created_by=user,
+        organisation=organisation,
+        created_by=org_admin,
     )
 
 
 @pytest.fixture
-def transcript(meeting, org, user):
+def transcript(meeting, organisation, org_admin):
     return Transcript.objects.create(
         meeting=meeting,
-        organisation=org,
-        created_by=user,
+        organisation=organisation,
+        created_by=org_admin,
         status=Transcript.Status.COMPLETED,
         raw_text="This is a test transcript about project planning.",
         language="en",
@@ -67,12 +38,12 @@ def transcript(meeting, org, user):
 
 
 @pytest.fixture
-def embedding_chunk(transcript, meeting, org, user):
+def embedding_chunk(transcript, meeting, organisation, org_admin):
     return EmbeddingChunk.objects.create(
         transcript=transcript,
         meeting=meeting,
-        organisation=org,
-        created_by=user,
+        organisation=organisation,
+        created_by=org_admin,
         chunk_text="This is a test transcript about project planning.",
         embedding=[0.1] * 768,
         chunk_index=0,
@@ -82,26 +53,12 @@ def embedding_chunk(transcript, meeting, org, user):
 
 
 @pytest.fixture
-def chat_session(user, org):
+def chat_session(org_admin, organisation):
     return ChatSession.objects.create(
-        user=user,
-        organisation=org,
+        user=org_admin,
+        organisation=organisation,
         title="Test Session",
     )
-
-
-@pytest.fixture
-def auth_client(user):
-    client = APIClient()
-    client.force_authenticate(user=user)
-    return client
-
-
-@pytest.fixture
-def individual_auth_client(individual_user):
-    client = APIClient()
-    client.force_authenticate(user=individual_user)
-    return client
 
 
 # ── EmbeddingChunk model tests ────────────────────────────────────────────────
@@ -109,12 +66,12 @@ def individual_auth_client(individual_user):
 @pytest.mark.django_db
 class TestEmbeddingChunkModel:
 
-    def test_create_embedding_chunk(self, transcript, meeting, org, user):
+    def test_create_embedding_chunk(self, transcript, meeting, organisation, org_admin):
         chunk = EmbeddingChunk.objects.create(
             transcript=transcript,
             meeting=meeting,
-            organisation=org,
-            created_by=user,
+            organisation=organisation,
+            created_by=org_admin,
             chunk_text="Hello world",
             embedding=[0.1] * 768,
             chunk_index=0,
@@ -128,15 +85,15 @@ class TestEmbeddingChunkModel:
     def test_embedding_chunk_str(self, embedding_chunk, meeting):
         assert str(meeting.title) in str(embedding_chunk)
 
-    def test_embedding_chunk_ordering(self, transcript, meeting, org, user):
+    def test_embedding_chunk_ordering(self, transcript, meeting, organisation, org_admin):
         EmbeddingChunk.objects.create(
             transcript=transcript, meeting=meeting,
-            organisation=org, created_by=user,
+            organisation=organisation, created_by=org_admin,
             chunk_text="Second", embedding=[0.2] * 768, chunk_index=1,
         )
         EmbeddingChunk.objects.create(
             transcript=transcript, meeting=meeting,
-            organisation=org, created_by=user,
+            organisation=organisation, created_by=org_admin,
             chunk_text="First", embedding=[0.1] * 768, chunk_index=0,
         )
         chunks = list(EmbeddingChunk.objects.filter(transcript=transcript))
@@ -153,23 +110,23 @@ class TestEmbeddingChunkModel:
 @pytest.mark.django_db
 class TestChatSessionModel:
 
-    def test_create_chat_session(self, user, org):
+    def test_create_chat_session(self, org_admin, organisation):
         session = ChatSession.objects.create(
-            user=user,
-            organisation=org,
+            user=org_admin,
+            organisation=organisation,
             title="Planning discussion",
         )
         assert session.id is not None
         assert session.title == "Planning discussion"
-        assert session.user == user
+        assert session.user == org_admin
 
-    def test_chat_session_str(self, chat_session, user):
-        assert user.email in str(chat_session)
+    def test_chat_session_str(self, chat_session, org_admin):
+        assert org_admin.email in str(chat_session)
 
-    def test_chat_session_ordering(self, user, org):
-        s1 = ChatSession.objects.create(user=user, organisation=org)
-        s2 = ChatSession.objects.create(user=user, organisation=org)
-        sessions = list(ChatSession.objects.filter(user=user))
+    def test_chat_session_ordering(self, org_admin, organisation):
+        s1 = ChatSession.objects.create(user=org_admin, organisation=organisation)
+        s2 = ChatSession.objects.create(user=org_admin, organisation=organisation)
+        sessions = list(ChatSession.objects.filter(user=org_admin))
         # Most recently updated first
         assert sessions[0].id == s2.id
 
@@ -218,23 +175,23 @@ class TestRAGSearchView:
         response = client.post('/api/v1/rag/search/', {'query': 'test'})
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
-    def test_search_missing_query(self, auth_client):
-        response = auth_client.post('/api/v1/rag/search/', {})
+    def test_search_missing_query(self, org_admin_client):
+        response = org_admin_client.post('/api/v1/rag/search/', {})
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
-    def test_search_query_too_long(self, auth_client):
-        response = auth_client.post('/api/v1/rag/search/', {
+    def test_search_query_too_long(self, org_admin_client):
+        response = org_admin_client.post('/api/v1/rag/search/', {
             'query': 'x' * 1001
         })
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
     @patch('rag.views.get_ai_provider')
-    def test_search_no_chunks_returns_empty(self, mock_ai, auth_client):
+    def test_search_no_chunks_returns_empty(self, mock_ai, org_admin_client):
         mock_provider = MagicMock()
         mock_provider.embed.return_value = [0.1] * 768
         mock_ai.return_value = mock_provider
 
-        response = auth_client.post('/api/v1/rag/search/', {
+        response = org_admin_client.post('/api/v1/rag/search/', {
             'query': 'What was discussed?'
         })
         assert response.status_code == status.HTTP_200_OK
@@ -243,14 +200,14 @@ class TestRAGSearchView:
 
     @patch('rag.views.get_ai_provider')
     def test_search_with_chunks_returns_answer(
-        self, mock_ai, auth_client, embedding_chunk
+        self, mock_ai, org_admin_client, embedding_chunk
     ):
         mock_provider = MagicMock()
         mock_provider.embed.return_value = [0.1] * 768
         mock_provider.complete.return_value = "The meeting discussed project planning."
         mock_ai.return_value = mock_provider
 
-        response = auth_client.post('/api/v1/rag/search/', {
+        response = org_admin_client.post('/api/v1/rag/search/', {
             'query': 'What was discussed?'
         })
         assert response.status_code == status.HTTP_200_OK
@@ -261,33 +218,33 @@ class TestRAGSearchView:
 
     @patch('rag.views.get_ai_provider')
     def test_search_scoped_to_meeting(
-        self, mock_ai, auth_client, embedding_chunk, meeting
+        self, mock_ai, org_admin_client, embedding_chunk, meeting
     ):
         mock_provider = MagicMock()
         mock_provider.embed.return_value = [0.1] * 768
         mock_provider.complete.return_value = "Answer."
         mock_ai.return_value = mock_provider
 
-        response = auth_client.post('/api/v1/rag/search/', {
+        response = org_admin_client.post('/api/v1/rag/search/', {
             'query': 'test',
             'meeting_id': str(meeting.id),
         })
         assert response.status_code == status.HTTP_200_OK
 
     @patch('rag.views.get_ai_provider')
-    def test_search_embedding_failure_returns_503(self, mock_ai, auth_client):
+    def test_search_embedding_failure_returns_503(self, mock_ai, org_admin_client):
         mock_provider = MagicMock()
         mock_provider.embed.side_effect = Exception("Embedding failed")
         mock_ai.return_value = mock_provider
 
-        response = auth_client.post('/api/v1/rag/search/', {
+        response = org_admin_client.post('/api/v1/rag/search/', {
             'query': 'What was discussed?'
         })
         assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
 
     @patch('rag.views.get_ai_provider')
     def test_search_tenant_isolation(
-        self, mock_ai, auth_client, individual_auth_client, embedding_chunk
+        self, mock_ai, org_admin_client, auth_client, embedding_chunk
     ):
         """Individual user cannot see org user's chunks."""
         mock_provider = MagicMock()
@@ -295,7 +252,8 @@ class TestRAGSearchView:
         mock_provider.complete.return_value = "Answer."
         mock_ai.return_value = mock_provider
 
-        response = individual_auth_client.post('/api/v1/rag/search/', {
+        # auth_client is individual user
+        response = auth_client.post('/api/v1/rag/search/', {
             'query': 'project planning'
         })
         assert response.status_code == status.HTTP_200_OK
@@ -313,34 +271,38 @@ class TestChatSessionListCreateView:
         response = client.get('/api/v1/rag/chat/sessions/')
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
-    def test_list_sessions_empty(self, auth_client):
-        response = auth_client.get('/api/v1/rag/chat/sessions/')
+    def test_list_sessions_empty(self, org_admin_client):
+        response = org_admin_client.get('/api/v1/rag/chat/sessions/')
         assert response.status_code == status.HTTP_200_OK
-        assert response.data['data'] == []
+        results = response.json()["data"].get("results", response.json()["data"])
+        assert results == []
 
-    def test_list_sessions_returns_own_sessions(self, auth_client, chat_session):
-        response = auth_client.get('/api/v1/rag/chat/sessions/')
+    def test_list_sessions_returns_own_sessions(self, org_admin_client, chat_session):
+        response = org_admin_client.get('/api/v1/rag/chat/sessions/')
         assert response.status_code == status.HTTP_200_OK
-        assert len(response.data['data']) == 1
-        assert response.data['data'][0]['id'] == str(chat_session.id)
+        results = response.json()["data"].get("results", response.json()["data"])
+        assert len(results) == 1
+        assert results[0]['id'] == str(chat_session.id)
 
-    def test_create_session(self, auth_client):
-        response = auth_client.post('/api/v1/rag/chat/sessions/')
+    def test_create_session(self, org_admin_client):
+        response = org_admin_client.post('/api/v1/rag/chat/sessions/')
         assert response.status_code == status.HTTP_201_CREATED
         assert 'id' in response.data['data']
 
-    def test_create_session_sets_organisation(self, auth_client, user):
-        response = auth_client.post('/api/v1/rag/chat/sessions/')
+    def test_create_session_sets_organisation(self, org_admin_client, organisation):
+        response = org_admin_client.post('/api/v1/rag/chat/sessions/')
         assert response.status_code == status.HTTP_201_CREATED
         session = ChatSession.objects.get(id=response.data['data']['id'])
-        assert session.organisation == user.organisation
+        assert session.organisation == organisation
 
     def test_sessions_isolated_between_users(
-        self, auth_client, individual_auth_client, chat_session
+        self, org_admin_client, auth_client, chat_session
     ):
-        response = individual_auth_client.get('/api/v1/rag/chat/sessions/')
+        # auth_client is individual
+        response = auth_client.get('/api/v1/rag/chat/sessions/')
         assert response.status_code == status.HTTP_200_OK
-        assert response.data['data'] == []
+        results = response.json()["data"].get("results", response.json()["data"])
+        assert results == []
 
 
 # ── Chat Session Detail endpoint tests ───────────────────────────────────────
@@ -348,34 +310,34 @@ class TestChatSessionListCreateView:
 @pytest.mark.django_db
 class TestChatSessionDetailView:
 
-    def test_get_session(self, auth_client, chat_session):
-        response = auth_client.get(
+    def test_get_session(self, org_admin_client, chat_session):
+        response = org_admin_client.get(
             f'/api/v1/rag/chat/sessions/{chat_session.id}/'
         )
         assert response.status_code == status.HTTP_200_OK
         assert response.data['data']['id'] == str(chat_session.id)
 
-    def test_get_session_not_found(self, auth_client):
-        response = auth_client.get(
+    def test_get_session_not_found(self, org_admin_client):
+        response = org_admin_client.get(
             f'/api/v1/rag/chat/sessions/{uuid.uuid4()}/'
         )
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
-    def test_get_session_wrong_user(self, individual_auth_client, chat_session):
-        response = individual_auth_client.get(
+    def test_get_session_wrong_user(self, auth_client, chat_session):
+        response = auth_client.get(
             f'/api/v1/rag/chat/sessions/{chat_session.id}/'
         )
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
-    def test_delete_session(self, auth_client, chat_session):
-        response = auth_client.delete(
+    def test_delete_session(self, org_admin_client, chat_session):
+        response = org_admin_client.delete(
             f'/api/v1/rag/chat/sessions/{chat_session.id}/'
         )
         assert response.status_code == status.HTTP_200_OK
         assert ChatSession.objects.filter(id=chat_session.id).count() == 0
 
-    def test_delete_session_wrong_user(self, individual_auth_client, chat_session):
-        response = individual_auth_client.delete(
+    def test_delete_session_wrong_user(self, auth_client, chat_session):
+        response = auth_client.delete(
             f'/api/v1/rag/chat/sessions/{chat_session.id}/'
         )
         assert response.status_code == status.HTTP_404_NOT_FOUND
@@ -395,15 +357,15 @@ class TestChatMessageCreateView:
         )
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
-    def test_send_message_missing_content(self, auth_client, chat_session):
-        response = auth_client.post(
+    def test_send_message_missing_content(self, org_admin_client, chat_session):
+        response = org_admin_client.post(
             f'/api/v1/rag/chat/sessions/{chat_session.id}/messages/',
             {}
         )
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
-    def test_send_message_wrong_session(self, individual_auth_client, chat_session):
-        response = individual_auth_client.post(
+    def test_send_message_wrong_session(self, auth_client, chat_session):
+        response = auth_client.post(
             f'/api/v1/rag/chat/sessions/{chat_session.id}/messages/',
             {'content': 'Hello'}
         )
@@ -411,14 +373,14 @@ class TestChatMessageCreateView:
 
     @patch('rag.views.get_ai_provider')
     def test_send_message_creates_user_and_assistant_messages(
-        self, mock_ai, auth_client, chat_session
+        self, mock_ai, org_admin_client, chat_session
     ):
         mock_provider = MagicMock()
         mock_provider.embed.return_value = [0.1] * 768
         mock_provider.complete.return_value = "Here is my answer."
         mock_ai.return_value = mock_provider
 
-        response = auth_client.post(
+        response = org_admin_client.post(
             f'/api/v1/rag/chat/sessions/{chat_session.id}/messages/',
             {'content': 'What was discussed?'}
         )
@@ -430,15 +392,15 @@ class TestChatMessageCreateView:
 
     @patch('rag.views.get_ai_provider')
     def test_first_message_sets_session_title(
-        self, mock_ai, auth_client, user, org
+        self, mock_ai, org_admin_client, org_admin, organisation
     ):
         mock_provider = MagicMock()
         mock_provider.embed.return_value = [0.1] * 768
         mock_provider.complete.return_value = "Answer."
         mock_ai.return_value = mock_provider
 
-        session = ChatSession.objects.create(user=user, organisation=org)
-        response = auth_client.post(
+        session = ChatSession.objects.create(user=org_admin, organisation=organisation)
+        response = org_admin_client.post(
             f'/api/v1/rag/chat/sessions/{session.id}/messages/',
             {'content': 'What did we decide about the budget?'}
         )
@@ -448,16 +410,16 @@ class TestChatMessageCreateView:
 
     @patch('rag.views.get_ai_provider')
     def test_message_title_truncated_at_80_chars(
-        self, mock_ai, auth_client, user, org
+        self, mock_ai, org_admin_client, org_admin, organisation
     ):
         mock_provider = MagicMock()
         mock_provider.embed.return_value = [0.1] * 768
         mock_provider.complete.return_value = "Answer."
         mock_ai.return_value = mock_provider
 
-        session = ChatSession.objects.create(user=user, organisation=org)
+        session = ChatSession.objects.create(user=org_admin, organisation=organisation)
         long_content = 'x' * 200
-        auth_client.post(
+        org_admin_client.post(
             f'/api/v1/rag/chat/sessions/{session.id}/messages/',
             {'content': long_content}
         )
@@ -466,13 +428,13 @@ class TestChatMessageCreateView:
 
     @patch('rag.views.get_ai_provider')
     def test_send_message_embedding_failure_returns_503(
-        self, mock_ai, auth_client, chat_session
+        self, mock_ai, org_admin_client, chat_session
     ):
         mock_provider = MagicMock()
         mock_provider.embed.side_effect = Exception("Embedding failed")
         mock_ai.return_value = mock_provider
 
-        response = auth_client.post(
+        response = org_admin_client.post(
             f'/api/v1/rag/chat/sessions/{chat_session.id}/messages/',
             {'content': 'What was discussed?'}
         )

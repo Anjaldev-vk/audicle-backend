@@ -15,32 +15,34 @@ from meetings.serializers import (
     MeetingSerializer,
     UpdateMeetingSerializer,
 )
-from meetings.utils import get_meeting_or_404, get_meeting_queryset
+from meetings.utils import get_meeting_or_404, TenantQuerysetMixin
 from utils.response import success_response, error_response
+from utils.pagination import StandardPagination
 
 logger = logging.getLogger("meetings")
 
 
 # ------------ Meeting List + Create -----------------------------------------------
 
-class MeetingListCreateView(APIView):
+class MeetingListCreateView(APIView, TenantQuerysetMixin):
     """
     GET /api/v1/meetings/
     POST /api/v1/meetings/
 
-    GET: Returns a list of meetings scoped to the user's organization or individual account.
+    GET: Returns a list of meetings scoped to the user's organization or individual account (paginated).
     POST: Creates a new meeting for the authenticated user.
     """
     permission_classes = [IsAuthenticated]
+    pagination_class = StandardPagination
 
     def get(self, request):
-        meetings = get_meeting_queryset(request.user)
-        serializer = MeetingSerializer(meetings, many=True)
-        return success_response(
-            message="Meetings retrieved successfully.",
-            data=serializer.data,
-            status_code=status.HTTP_200_OK,
-        )
+        meetings = self.get_meeting_queryset(request.user, request.organisation)
+        
+        paginator = self.pagination_class()
+        page = paginator.paginate_queryset(meetings, request)
+        serializer = MeetingSerializer(page, many=True)
+        
+        return paginator.get_paginated_response(serializer.data)
 
     def post(self, request):
         serializer = CreateMeetingSerializer(
@@ -65,7 +67,7 @@ class MeetingListCreateView(APIView):
 
 # ------------ Meeting Retrieve, Update, Delete -----------------------------------
 
-class MeetingDetailView(APIView):
+class MeetingDetailView(APIView, TenantQuerysetMixin):
     """
     GET /api/v1/meetings/<meeting_id>/
     PATCH /api/v1/meetings/<meeting_id>/
@@ -77,8 +79,8 @@ class MeetingDetailView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
-    def get_object(self, meeting_id, user):
-        meeting = get_meeting_or_404(meeting_id, user)
+    def get_object(self, meeting_id, request):
+        meeting = get_meeting_or_404(meeting_id, request.user, request.organisation)
         if not meeting:
             return None, error_response(
                 message="Meeting not found.",
@@ -88,7 +90,7 @@ class MeetingDetailView(APIView):
         return meeting, None
 
     def get(self, request, meeting_id):
-        meeting, err = self.get_object(meeting_id, request.user)
+        meeting, err = self.get_object(meeting_id, request)
         if err:
             return err
         return success_response(
@@ -98,7 +100,7 @@ class MeetingDetailView(APIView):
         )
 
     def patch(self, request, meeting_id):
-        meeting, err = self.get_object(meeting_id, request.user)
+        meeting, err = self.get_object(meeting_id, request)
         if err:
             return err
 
@@ -128,7 +130,7 @@ class MeetingDetailView(APIView):
         )
 
     def delete(self, request, meeting_id):
-        meeting, err = self.get_object(meeting_id, request.user)
+        meeting, err = self.get_object(meeting_id, request)
         if err:
             return err
 
@@ -154,7 +156,7 @@ class MeetingDetailView(APIView):
 
 # ------------ Bot Dispatch -----------------------------------
 
-class BotDispatchView(APIView):
+class BotDispatchView(APIView, TenantQuerysetMixin):
     """
     POST /api/v1/meetings/<meeting_id>/bot/dispatch/
 
@@ -165,7 +167,7 @@ class BotDispatchView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, meeting_id):
-        meeting = get_meeting_or_404(meeting_id, request.user)
+        meeting = get_meeting_or_404(meeting_id, request.user, request.organisation)
         if not meeting:
             return error_response(
                 message="Meeting not found.",
@@ -237,7 +239,7 @@ class BotDispatchView(APIView):
 
 # ------------ Participants -----------------------------------
 
-class MeetingParticipantListCreateView(APIView):
+class MeetingParticipantListCreateView(APIView, TenantQuerysetMixin):
     """
     GET /api/v1/meetings/<meeting_id>/participants/
     POST /api/v1/meetings/<meeting_id>/participants/
@@ -246,9 +248,10 @@ class MeetingParticipantListCreateView(APIView):
     POST: Adds a new participant to a meeting.
     """
     permission_classes = [IsAuthenticated]
+    pagination_class = StandardPagination
 
-    def get_meeting(self, meeting_id, user):
-        meeting = get_meeting_or_404(meeting_id, user)
+    def get_meeting(self, meeting_id, request):
+        meeting = get_meeting_or_404(meeting_id, request.user, request.organisation)
         if not meeting:
             return None, error_response(
                 message="Meeting not found.",
@@ -258,21 +261,20 @@ class MeetingParticipantListCreateView(APIView):
         return meeting, None
 
     def get(self, request, meeting_id):
-        meeting, err = self.get_meeting(meeting_id, request.user)
+        meeting, err = self.get_meeting(meeting_id, request)
         if err:
             return err
 
-        participants = meeting.participants.select_related("user").all()
-        serializer   = MeetingParticipantSerializer(participants, many=True)
+        participants = meeting.participants.select_related("user").order_by("joined_at", "id")
+        
+        paginator = self.pagination_class()
+        page = paginator.paginate_queryset(participants, request)
+        serializer = MeetingParticipantSerializer(page, many=True)
 
-        return success_response(
-            message="Participants retrieved successfully.",
-            data=serializer.data,
-            status_code=status.HTTP_200_OK,
-        )
+        return paginator.get_paginated_response(serializer.data)
 
     def post(self, request, meeting_id):
-        meeting, err = self.get_meeting(meeting_id, request.user)
+        meeting, err = self.get_meeting(meeting_id, request)
         if err:
             return err
 
@@ -296,7 +298,7 @@ class MeetingParticipantListCreateView(APIView):
         )
 
 
-class MeetingParticipantDeleteView(APIView):
+class MeetingParticipantDeleteView(APIView, TenantQuerysetMixin):
     """
     DELETE /api/v1/meetings/<meeting_id>/participants/<participant_id>/
 
@@ -305,7 +307,7 @@ class MeetingParticipantDeleteView(APIView):
     permission_classes = [IsAuthenticated]
 
     def delete(self, request, meeting_id, participant_id):
-        meeting = get_meeting_or_404(meeting_id, request.user)
+        meeting = get_meeting_or_404(meeting_id, request.user, request.organisation)
         if not meeting:
             return error_response(
                 message="Meeting not found.",

@@ -119,7 +119,7 @@ class CreateMeetingSerializer(serializers.ModelSerializer):
         return Meeting.objects.create(
             **validated_data,
             created_by=user,
-            organisation=user.organisation,   # None for individual users
+            organisation=request.organisation, # Provided by WorkspaceMiddleware
         )
 
 

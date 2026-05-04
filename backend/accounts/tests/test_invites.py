@@ -1,5 +1,5 @@
-# accounts/tests/test_invites.py
 import pytest
+from django.urls import reverse
 
 INVITE_URL = '/api/v1/accounts/organisation/invite/'
 
@@ -48,21 +48,26 @@ class TestCreateInvite:
 class TestVerifyInvite:
 
     def test_verify_valid_invite(self, api_client, valid_invite):
-        response = api_client.get(f'/api/v1/accounts/invite/{valid_invite.code}/')
+        print(f"DEBUG INVITE CODE: '{valid_invite.code}'")
+        url = reverse('verify_invite', kwargs={'version': 'v1', 'code': valid_invite.code})
+        response = api_client.get(url)
         assert response.status_code == 200
         assert response.data['data']['email'] == 'invited@test.com'
         assert response.data['data']['organisation'] == 'Test Org'
 
     def test_verify_expired_invite(self, api_client, expired_invite):
-        response = api_client.get(f'/api/v1/accounts/invite/{expired_invite.code}/')
+        url = reverse('verify_invite', kwargs={'version': 'v1', 'code': expired_invite.code})
+        response = api_client.get(url)
         assert response.status_code == 400
 
     def test_verify_accepted_invite(self, api_client, accepted_invite):
-        response = api_client.get(f'/api/v1/accounts/invite/{accepted_invite.code}/')
+        url = reverse('verify_invite', kwargs={'version': 'v1', 'code': accepted_invite.code})
+        response = api_client.get(url)
         assert response.status_code == 400
 
     def test_verify_fake_code(self, api_client):
-        response = api_client.get('/api/v1/accounts/invite/totally-fake-code/')
+        url = reverse('verify_invite', kwargs={'version': 'v1', 'code': 'totally-fake-code'})
+        response = api_client.get(url)
         assert response.status_code in [400, 404]
 @pytest.mark.django_db
 class TestInviteEdgeCases:
@@ -88,5 +93,6 @@ class TestInviteEdgeCases:
         assert response.status_code == 400
 
     def test_verify_invite_is_public(self, api_client, valid_invite):
-        response = api_client.get(f'/api/v1/accounts/invite/{valid_invite.code}/')
+        url = reverse('verify_invite', kwargs={'version': 'v1', 'code': valid_invite.code})
+        response = api_client.get(url)
         assert response.status_code == 200

@@ -6,7 +6,7 @@ from datetime import timedelta
 from rest_framework import serializers
 from rest_framework_simplejwt.tokens import RefreshToken
 from drf_spectacular.utils import extend_schema_field
-from .models import Organisation, OrganisationInvite, User 
+from .models import Organisation, OrganisationInvite, User, Membership
 
 
 #---------------------Helper Function to Generate JWT Tokens---------------------
@@ -28,7 +28,6 @@ class OrganisationSerializer(serializers.ModelSerializer):
 #-----------------------User Serializer-----------------------
 class UserSerializer(serializers.ModelSerializer):
     full_name    = serializers.SerializerMethodField()
-    organisation = OrganisationSerializer(read_only=True)
     account_type = serializers.SerializerMethodField()
 
     class Meta:
@@ -37,8 +36,7 @@ class UserSerializer(serializers.ModelSerializer):
             'id', 'email', 'first_name', 'last_name', 'full_name',
             'phone_number', 'job_title', 'timezone', 'avatar_url',
             'email_notifications', 'meeting_reminders',
-            'is_verified', 'organisation', 'org_role',
-            'account_type', 'created_at', 'mfa_enabled'
+            'is_verified', 'account_type', 'created_at', 'mfa_enabled'
         ]
         read_only_fields = ['id', 'email', 'is_verified', 'created_at', 'mfa_enabled']
 
@@ -48,7 +46,7 @@ class UserSerializer(serializers.ModelSerializer):
 
     @extend_schema_field(serializers.CharField)
     def get_account_type(self, obj):
-        return 'individual' if obj.is_individual else 'organisation'
+        return 'organisation' if obj.memberships.exists() else 'individual'
 
 
 #-----------------------Registration Serializer-----------------------
@@ -135,7 +133,7 @@ class RegisterUserSerializer(serializers.Serializer):
                     name=org_name,
                     slug=org_slug,
                 )
-                org_role = User.OrgRole.OWNER
+                org_role = Membership.Role.OWNER
 
             elif account_type == 'join_org' and invite:
                 organisation  = invite.organisation
@@ -143,11 +141,15 @@ class RegisterUserSerializer(serializers.Serializer):
                 invite.status = OrganisationInvite.Status.ACCEPTED
                 invite.save(update_fields=['status'])
 
-            user = User.objects.create_user(
-                organisation=organisation,
-                org_role=org_role,
-                **validated_data
-            )
+            user = User.objects.create_user(**validated_data)
+
+            if organisation:
+                Membership.objects.create(
+                    user=user,
+                    organisation=organisation,
+                    role=org_role
+                )
+
             return user
 
 
@@ -193,16 +195,16 @@ class LoginUserSerializer(serializers.Serializer):
 class CreateOrganisationInviteSerializer(serializers.Serializer):
     email = serializers.EmailField()
     role  = serializers.ChoiceField(
-        choices=User.OrgRole.choices,
-        default=User.OrgRole.MEMBER
+        choices=Membership.Role.choices,
+        default=Membership.Role.MEMBER
     )
 
     def validate_email(self, value):
         value = value.lower().strip()
-        user  = self.context['request'].user
-        org   = user.organisation
-
-        if User.objects.filter(email=value, organisation=org).exists():
+        org   = self.context['request'].organisation
+        
+        # Check if user already has a membership in this org
+        if Membership.objects.filter(user__email=value, organisation=org).exists():
             raise serializers.ValidationError(
                 'This user is already a member of your organisation.'
             )
@@ -220,8 +222,9 @@ class CreateOrganisationInviteSerializer(serializers.Serializer):
 
     def create(self, validated_data):
         user = self.context['request'].user
+        org  = self.context['request'].organisation
         return OrganisationInvite.objects.create(
-            organisation=user.organisation,
+            organisation=org,
             invited_by=user,
             email=validated_data['email'],
             role=validated_data['role'],
@@ -300,3 +303,8 @@ class UpdateOrganisationSerializer(serializers.ModelSerializer):
     class Meta:
         model  = Organisation
         fields = ['name', 'slug', 'plan', 'logo_url']
+
+
+class OrganisationCreateSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=255)
+    slug = serializers.SlugField()

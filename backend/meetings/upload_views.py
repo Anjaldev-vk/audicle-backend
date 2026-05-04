@@ -39,7 +39,7 @@ class RequestUploadURLView(APIView):
     def post(self, request, meeting_id):
         try:
             # 1. Find the meeting (tenant scoped)
-            meeting = get_meeting_or_404(meeting_id, request.user)
+            meeting = get_meeting_or_404(meeting_id, request.user, request.organisation)
             if not meeting:
                 return error_response(
                     message="Meeting not found.",
@@ -146,7 +146,7 @@ class ConfirmUploadView(APIView):
     def post(self, request, meeting_id):
 
         # 1. Find the meeting
-        meeting = get_meeting_or_404(meeting_id, request.user)
+        meeting = get_meeting_or_404(meeting_id, request.user, request.organisation)
         if not meeting:
             return error_response(
                 message="Meeting not found.",
@@ -228,7 +228,7 @@ class GetDownloadURLView(APIView):
     def get(self, request, meeting_id):
 
         # 1. Find the meeting
-        meeting = get_meeting_or_404(meeting_id, request.user)
+        meeting = get_meeting_or_404(meeting_id, request.user, request.organisation)
         if not meeting:
             return error_response(
                 message="Meeting not found.",

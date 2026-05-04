@@ -16,9 +16,10 @@ class IsMeetingOwnerOrOrgAdmin(BasePermission):
             return True
 
         if (
-            user.organisation
-            and obj.organisation == user.organisation
-            and user.org_role in ("owner", "admin")
+            request.organisation
+            and obj.organisation == request.organisation
+            and request.membership
+            and request.membership.role in ("owner", "admin")
         ):
             return True
 

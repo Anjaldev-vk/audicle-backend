@@ -84,11 +84,14 @@ def _get_gemini_provider():
             Generate embedding vector for RAG.
             Gemini: text-embedding-004 → 768 dimensions.
             """
+            if not text.strip():
+                return None
             try:
                 result = genai.embed_content(
                     model="models/gemini-embedding-001",
                     content=text,
                     task_type="retrieval_query",
+                    output_dimensionality=768,
                 )
                 return result["embedding"]
             except Exception as exc:

@@ -1,10 +1,29 @@
-# backend/conftest.py
 import pytest
 from django.db import connection
 from rest_framework.test import APIClient
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from datetime import timedelta
+from unittest.mock import patch, MagicMock
+
+
+def get_results(response):
+    """Extract results list from paginated or non-paginated response."""
+    data = response.json().get('data', {})
+    if 'results' in data:
+        return data['results']
+    return data
+
+@pytest.fixture(autouse=True)
+def mock_kafka(settings):
+    """
+    Auto-applied to every test.
+    Prevents real Kafka connections during testing.
+    """
+    with patch('utils.kafka_producer.get_producer') as mock_get:
+        mock_p = MagicMock()
+        mock_get.return_value = mock_p
+        yield mock_p
 
 
 # ── anyio backend — required for @pytest.mark.anyio WebSocket tests ──────────
@@ -37,6 +56,14 @@ def test_settings(settings):
             "BACKEND": "django.core.cache.backends.locmem.LocMemCache"
         }
     }
+    # Set high throttle rates for tests to prevent 429s during test runs.
+    # Specific throttle tests will override this.
+    settings.REST_FRAMEWORK['DEFAULT_THROTTLE_RATES'] = {
+        'anon': '1000/min',
+        'user': '1000/min',
+        'auth': '1000/min',
+    }
+    
     # Use InMemoryChannelLayer so WebSocket tests don't hang waiting for Redis
     settings.CHANNEL_LAYERS = {
         "default": {
@@ -47,11 +74,13 @@ def test_settings(settings):
 
 @pytest.fixture(autouse=True)
 def clear_test_cache():
-    """Clear the cache before every test to prevent throttle state leakage."""
-    from django.core.cache import cache
-    cache.clear()
+    """Clear all caches before every test to prevent state leakage."""
+    from django.core.cache import caches
+    for cache_name in caches:
+        caches[cache_name].clear()
     yield
-    cache.clear()
+    for cache_name in caches:
+        caches[cache_name].clear()
 
 
 # ── API Clients ───────────────────────────────────────────────────────────────
@@ -62,24 +91,37 @@ def api_client():
 
 
 @pytest.fixture
-def auth_client(api_client, individual_user):
+def auth_client(individual_user):
     """Authenticated client for individual user."""
-    api_client.force_authenticate(user=individual_user)
-    return api_client
+    client = APIClient()
+    client.force_authenticate(user=individual_user)
+    return client
 
 
 @pytest.fixture
-def org_admin_client(api_client, org_admin):
-    """Authenticated client for org admin."""
-    api_client.force_authenticate(user=org_admin)
-    return api_client
+def org_admin_client(org_admin, organisation):
+    """Authenticated client for org admin with workspace context."""
+    from rest_framework_simplejwt.tokens import RefreshToken
+    client = APIClient()
+    refresh = RefreshToken.for_user(org_admin)
+    client.credentials(
+        HTTP_AUTHORIZATION=f'Bearer {refresh.access_token}',
+        HTTP_X_WORKSPACE_ID=str(organisation.id)
+    )
+    return client
 
 
 @pytest.fixture
-def org_member_client(api_client, org_member):
-    """Authenticated client for org member."""
-    api_client.force_authenticate(user=org_member)
-    return api_client
+def org_member_client(org_member, organisation):
+    """Authenticated client for org member with workspace context."""
+    from rest_framework_simplejwt.tokens import RefreshToken
+    client = APIClient()
+    refresh = RefreshToken.for_user(org_member)
+    client.credentials(
+        HTTP_AUTHORIZATION=f'Bearer {refresh.access_token}',
+        HTTP_X_WORKSPACE_ID=str(organisation.id)
+    )
+    return client
 
 
 # ── User and Organisation Fixtures ────────────────────────────────────────────
@@ -107,28 +149,38 @@ def organisation(db):
 
 @pytest.fixture
 def org_admin(db, organisation):
+    from accounts.models import Membership
     User = get_user_model()
-    return User.objects.create_user(
+    user = User.objects.create_user(
         email='admin@testorg.com',
         password='Password123!',
         first_name='Admin',
         last_name='User',
-        organisation=organisation,
-        org_role='owner',
     )
+    Membership.objects.create(
+        user=user,
+        organisation=organisation,
+        role='owner'
+    )
+    return user
 
 
 @pytest.fixture
 def org_member(db, organisation):
+    from accounts.models import Membership
     User = get_user_model()
-    return User.objects.create_user(
+    user = User.objects.create_user(
         email='member@testorg.com',
         password='Password123!',
         first_name='Member',
         last_name='User',
-        organisation=organisation,
-        org_role='member',
     )
+    Membership.objects.create(
+        user=user,
+        organisation=organisation,
+        role='member'
+    )
+    return user
 
 
 @pytest.fixture

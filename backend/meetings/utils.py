@@ -1,45 +1,31 @@
 import logging
-
 from meetings.models import Meeting
 
 logger = logging.getLogger("meetings")
 
 
-def get_meeting_queryset(user):
-    """
-    Returns a correctly tenant-scoped Meeting queryset.
-    - Org users   → all non-archived meetings in their organisation
-    - Individual  → only their own non-archived meetings
-    Never returns cross-tenant data.
-    """
-    if user.organisation:
-        return (
-            Meeting.objects
-            .filter(
-                organisation=user.organisation,
-                is_archived=False,
-            )
-            .select_related("created_by", "organisation")
-            .prefetch_related("participants")
-        )
-    return (
-        Meeting.objects
-        .filter(
+class TenantQuerysetMixin:
+    def get_meeting_queryset(self, user, organisation):
+        from meetings.models import Meeting
+        if organisation:
+            return Meeting.objects.filter(
+                organisation=organisation,
+                is_archived=False
+            ).select_related('created_by', 'organisation')
+        return Meeting.objects.filter(
             created_by=user,
             organisation=None,
-            is_archived=False,
-        )
-        .select_related("created_by")
-        .prefetch_related("participants")
-    )
+            is_archived=False
+        ).select_related('created_by')
 
 
-def get_meeting_or_404(meeting_id: str, user):
+def get_meeting_or_404(meeting_id: str, user, organisation=None):
     """
     Fetch a single meeting scoped to the user's tenant.
-    Returns Meeting or None — views handle the 404 response.
+    Returns Meeting or None.
     """
+    mixin = TenantQuerysetMixin()
     try:
-        return get_meeting_queryset(user).get(id=meeting_id)
-    except Meeting.DoesNotExist:
+        return mixin.get_meeting_queryset(user, organisation).get(id=meeting_id)
+    except (Meeting.DoesNotExist, Exception):
         return None

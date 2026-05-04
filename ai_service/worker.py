@@ -14,7 +14,7 @@ from botocore.exceptions import ClientError
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
-# ── Config from environment ───────────────────────────────────────────────────
+# ------------------ Config from environment ------------------
 KAFKA_BROKER        = os.environ.get("KAFKA_BROKER", "kafka:9092")
 KAFKA_GROUP         = os.environ.get("KAFKA_GROUP", "ai-service-group")
 KAFKA_TOPIC         = os.environ.get("KAFKA_TOPIC", "transcription_tasks")
@@ -34,17 +34,17 @@ GEMINI_MODEL    = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
 OPENAI_API_KEY  = os.environ.get("OPENAI_API_KEY")
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://ollama:11434/v1")
 
-# ── Chunk settings ────────────────────────────────────────────────────────────
+# --------------------- Chunk settings ---------------------
 CHUNK_SIZE    = 512   # tokens (approximate — we use words)
 CHUNK_OVERLAP = 50    # words overlap between chunks
 
-# ── Load Whisper model once at startup ────────────────────────────────────────
+# ------------------ Load Whisper model once at startup ------------------
 logger.info("Loading Whisper base model...")
 model = whisper.load_model("base")
 logger.info("Whisper model loaded successfully")
 
 
-# ── S3 helpers ────────────────────────────────────────────────────────────────
+# ------------------ S3 helpers ------------------
 
 def get_s3_client():
     return boto3.client(
@@ -70,7 +70,7 @@ def download_from_s3(s3_key: str, local_path: str) -> bool:
         return False
 
 
-# ── Django callbacks ──────────────────────────────────────────────────────────
+# ------------------ Django callbacks ------------------
 
 def post_transcript_to_django(payload: dict) -> bool:
     url = f"{DJANGO_INTERNAL_URL}/api/v1/internal/transcript/complete/"
@@ -162,7 +162,7 @@ def post_embeddings_to_django(payload: dict) -> bool:
         return False
 
 
-# ── Chunking ──────────────────────────────────────────────────────────────────
+# ------------------ Chunking ------------------
 
 def chunk_text(text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -> list[dict]:
     """
@@ -235,7 +235,7 @@ def assign_timestamps_to_chunks(chunks: list[dict], segments: list[dict]) -> lis
     return chunks
 
 
-# ── Embedding ─────────────────────────────────────────────────────────────────
+# ------------------ Embedding ------------------
 
 def get_embedding(text: str) -> list[float] | None:
     """
@@ -246,12 +246,15 @@ def get_embedding(text: str) -> list[float] | None:
     """
     try:
         if AI_BACKEND == "gemini":
+            if not text.strip():
+                return None
             import google.generativeai as genai
             genai.configure(api_key=GEMINI_API_KEY)
             result = genai.embed_content(
-                model="models/embedding-001",
+                model="models/gemini-embedding-001",
                 content=text,
-                task_type="retrieval_document",  # document side of RAG
+                task_type="retrieval_document",  
+                output_dimensionality=768,
             )
             return result["embedding"]
 
@@ -282,7 +285,7 @@ def get_embedding(text: str) -> list[float] | None:
         return None
 
 
-# ── Embedding pipeline ────────────────────────────────────────────────────────
+# ------------------ Embedding pipeline ------------------
 
 def process_embedding_message(message: dict) -> None:
     """
@@ -344,7 +347,7 @@ def process_embedding_message(message: dict) -> None:
     })
 
 
-# ── Existing pipelines ────────────────────────────────────────────────────────
+# ------------------ Existing pipelines ------------------
 
 def process_summarization_message(message: dict) -> None:
     meeting_id      = message.get("meeting_id")
@@ -474,8 +477,7 @@ def process_message(message: dict) -> None:
             logger.info("Cleaned up temp file: %s", local_path)
 
 
-# ── Kafka consumer loop ───────────────────────────────────────────────────────
-
+# ------------------ Kafka consumer loop ------------------
 def main():
     consumer = Consumer({
         "bootstrap.servers": KAFKA_BROKER,

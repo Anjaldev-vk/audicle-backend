@@ -5,27 +5,28 @@ from .models import EmbeddingChunk
 logger = logging.getLogger('rag')
 
 
-def get_queryset_for_user(user):
+def get_queryset_for_user(user, organisation):
     """
     Scope EmbeddingChunk queryset to the user's tenant.
     Org users → organisation scope.
     Individual users → created_by scope.
     """
-    if user.organisation:
+    if organisation:
         return EmbeddingChunk.objects.filter(
-            organisation=user.organisation
+            organisation=organisation
         ).select_related('meeting', 'transcript')
     return EmbeddingChunk.objects.filter(
-        created_by=user
+        created_by=user,
+        organisation=None
     ).select_related('meeting', 'transcript')
 
 
-def search_similar_chunks(user, query_embedding, meeting_id=None, limit=5):
+def search_similar_chunks(user, organisation, query_embedding, meeting_id=None, limit=5):
     """
     Perform cosine similarity search against pgvector.
     Returns top `limit` chunks ordered by similarity.
     """
-    qs = get_queryset_for_user(user)
+    qs = get_queryset_for_user(user, organisation)
 
     if meeting_id:
         qs = qs.filter(meeting_id=meeting_id)

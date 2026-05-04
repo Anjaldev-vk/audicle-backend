@@ -9,6 +9,7 @@ from .views import (
     CookieRefreshView,          
     RequestPasswordResetView,  
     ResetPasswordConfirmView,
+    WorkspaceListView, WorkspaceCreateView, InviteAcceptView,
 )
 from .mfa_views import (
     DisableMFAView,
@@ -52,4 +53,9 @@ urlpatterns = [
     path('organisation/members/<uuid:user_id>/remove/', RemoveMemberView.as_view(), name='remove_member'),
     path('organisation/invite/', InviteMemberView.as_view(), name='invite_member'),
     path('invite/<str:code>/', VerifyInviteView.as_view(), name='verify_invite'),
+
+    #------------------ Workspaces ------------------
+    path('workspaces/', WorkspaceListView.as_view(), name='workspace_list'),
+    path('workspaces/create/', WorkspaceCreateView.as_view(), name='workspace_create'),
+    path('invite/<str:code>/accept/', InviteAcceptView.as_view(), name='invite_accept'),
 ]

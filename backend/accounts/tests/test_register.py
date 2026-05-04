@@ -1,9 +1,20 @@
 import pytest
 from django.urls import reverse
+from django.test import override_settings
 from rest_framework import status
 
 
 REGISTER_URL = '/api/v1/accounts/register/'
+
+@pytest.fixture(autouse=True)
+def high_throttle_rate(settings):
+    """Increase throttle limits for registration tests to prevent 429 failures."""
+    drf_settings = settings.REST_FRAMEWORK.copy()
+    drf_settings['DEFAULT_THROTTLE_RATES'] = {
+        **drf_settings.get('DEFAULT_THROTTLE_RATES', {}),
+        'auth': '100/min'
+    }
+    settings.REST_FRAMEWORK = drf_settings
 
 @pytest.mark.django_db
 class TestRegisterIndividual:
@@ -35,7 +46,8 @@ class TestRegisterIndividual:
         
         assert 'user' in response.data['data']
         assert response.data['data']['user']['email'] == "newuser@test.com"
-        assert response.data['data']['user']['organisation'] is None
+        # User has no legacy organisation field, check workspaces instead
+        assert len(response.data['data']['workspaces']) == 1 # personal workspace only
 
     def test_register_duplicate_email(self, api_client, individual_user):
         payload = {
@@ -83,8 +95,16 @@ class TestRegisterOrganisation:
         
         assert response.status_code == status.HTTP_201_CREATED
         
-        assert response.data['data']['user']['org_role'] == 'owner'
-        assert response.data['data']['user']['organisation'] is not None
+        # User has no legacy organisation field
+        assert len(response.data['data']['workspaces']) >= 2 # personal + created org
+        
+        # Verify the created org workspace
+        org_ws = next(w for w in response.data['data']['workspaces'] if w['type'] == 'organisation')
+        assert org_ws['name'] == 'My Company'
+        assert org_ws['role'] == 'owner'
+        assert org_ws['plan'] == 'free'
+        
+        assert response.data['data']['active_workspace'] == 'personal'
         
         assert 'tokens' in response.data['data']
         assert 'refresh_token' in response.cookies
@@ -108,8 +128,11 @@ class TestRegisterViaInvite:
         
         assert response.status_code == status.HTTP_201_CREATED
         
-        assert response.data['data']['user']['org_role'] == 'member'
-        assert response.data['data']['user']['organisation'] is not None
+        # User has no legacy organisation field
+        assert len(response.data['data']['workspaces']) >= 2 # personal + joined org
+        
+        org_ws = next(w for w in response.data['data']['workspaces'] if w['type'] == 'organisation')
+        assert org_ws['role'] == 'member'
         
         from accounts.models import OrganisationInvite
         invite = OrganisationInvite.objects.get(code=valid_invite.code)
@@ -187,5 +210,3 @@ class TestRegisterViaInvite:
             }
             response = api_client.post(REGISTER_URL, payload, format='json')
             assert response.status_code == 400
-
-    

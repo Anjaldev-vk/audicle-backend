@@ -1,40 +1,31 @@
 from rest_framework.permissions import BasePermission
-
-
-class IsOrgAdmin(BasePermission):
-    """
-    Allows access only to organisation owners and admins.
-    """
-    message = 'You must be an organisation admin to perform this action.'
-
-    def has_permission(self, request, view):
-        return (
-            request.user.is_authenticated and
-            request.user.is_org_admin
-        )
+from accounts.models import Membership
 
 
 class IsOrgMember(BasePermission):
-    """
-    Allows access only to users who belong to an organisation.
-    """
-    message = 'You must be part of an organisation to perform this action.'
-
     def has_permission(self, request, view):
         return (
             request.user.is_authenticated and
-            request.user.is_org_member
+            request.membership is not None
         )
 
 
-class IsIndividualUser(BasePermission):
-    """
-    Allows access only to individual users with no organisation.
-    """
-    message = 'This action is only available to individual users.'
-
+class IsOrgAdmin(BasePermission):
     def has_permission(self, request, view):
         return (
             request.user.is_authenticated and
-            request.user.is_individual
+            request.membership is not None and
+            request.membership.role in [
+                Membership.Role.OWNER,
+                Membership.Role.ADMIN
+            ]
+        )
+
+
+class IsOrgOwner(BasePermission):
+    def has_permission(self, request, view):
+        return (
+            request.user.is_authenticated and
+            request.membership is not None and
+            request.membership.role == Membership.Role.OWNER
         )
