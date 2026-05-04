@@ -9,6 +9,7 @@ from transcripts.views import (
     TranscriptDetailView,
     TranscriptRetryView,
     TranscriptSegmentListView,
+    TranscriptSegmentEditView,
 )
 
 app_name = "transcripts"
@@ -17,6 +18,7 @@ urlpatterns = [
     # ---------------Transcript endpoints -----------------------------
     path("meetings/<uuid:meeting_id>/transcript/", TranscriptDetailView.as_view(), name="transcript-detail"),
     path("meetings/<uuid:meeting_id>/transcript/segments/", TranscriptSegmentListView.as_view(), name="transcript-segments"),
+    path("meetings/<uuid:meeting_id>/transcript/segments/<uuid:segment_id>/", TranscriptSegmentEditView.as_view(), name="transcript-segment-edit"),
     path("meetings/<uuid:meeting_id>/transcript/retry/", TranscriptRetryView.as_view(), name="transcript-retry"),
 
     # ---------------Summary endpoints -------------------------------

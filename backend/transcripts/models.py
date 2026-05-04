@@ -143,6 +143,18 @@ class TranscriptSegment(models.Model):
         help_text="Whisper confidence score 0.0 to 1.0",
     )
 
+    # Phase 13 fields
+    speaker_name = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        help_text="Human-readable speaker name — set manually by user",
+    )
+    is_edited = models.BooleanField(
+        default=False,
+        help_text="True if this segment was manually edited by a user",
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

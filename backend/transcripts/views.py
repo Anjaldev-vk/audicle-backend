@@ -2,9 +2,11 @@ import logging
 
 from django.conf import settings
 from django.db import transaction
-from rest_framework import status
+from rest_framework import status, generics, permissions
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
+from rest_framework.response import Response
+from django.shortcuts import get_object_or_404
 
 from meetings.models import Meeting
 from meetings.utils import get_meeting_or_404
@@ -12,6 +14,7 @@ from transcripts.models import Transcript, TranscriptSegment, MeetingSummary
 from transcripts.serializers import (
     InternalTranscriptCompleteSerializer,
     InternalSummaryCompleteSerializer,
+    TranscriptSegmentEditSerializer,
     MeetingSummarySerializer,
     TranscriptSegmentListSerializer,
     TranscriptSerializer,
@@ -774,3 +777,66 @@ class InternalSummaryCompleteView(APIView):
             },
             status_code=status.HTTP_200_OK,
         )
+
+
+class TranscriptSegmentEditView(generics.GenericAPIView):
+    """
+    PATCH /api/v1/meetings/<meeting_id>/transcript/segments/<segment_id>/
+    Allows editing text and speaker_name of a single segment.
+    Sets is_edited=True automatically.
+    """
+
+    permission_classes = [IsAuthenticated]
+    serializer_class = TranscriptSegmentEditSerializer
+
+    def get_object(self, meeting_id, segment_id, user, organisation):
+        # Scope meeting to this user's workspace
+        meeting = get_meeting_or_404(meeting_id, user, organisation)
+        if not meeting:
+            return None
+            
+        # Scope segment to this meeting's transcript
+        try:
+            return TranscriptSegment.objects.get(
+                id=segment_id,
+                transcript__meeting=meeting,
+            )
+        except TranscriptSegment.DoesNotExist:
+            return None
+
+    def patch(self, request, meeting_id, segment_id):
+        segment = self.get_object(meeting_id, segment_id, request.user, getattr(request, 'organisation', None))
+        if not segment:
+            return error_response(
+                message="Segment or meeting not found.",
+                code="not_found",
+                status_code=status.HTTP_404_NOT_FOUND,
+            )
+            
+        serializer = self.get_serializer(
+            segment,
+            data=request.data,
+            partial=True,
+        )
+        if not serializer.is_valid():
+            return error_response(
+                message="Validation failed",
+                code="validation_error",
+                errors=serializer.errors,
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Auto-set is_edited=True on any successful edit
+        serializer.save(is_edited=True)
+
+        logger.info(
+            "Segment %s edited by user %s",
+            segment_id,
+            request.user.email,
+        )
+        return success_response(
+            message="Segment updated successfully",
+            data=serializer.data,
+            status_code=status.HTTP_200_OK,
+        )
+

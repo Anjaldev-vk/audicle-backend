@@ -69,6 +69,7 @@ INSTALLED_APPS = [
     'rag',
     'notifications',
     'channels',
+    'search',
 ]
 
 MIDDLEWARE = [

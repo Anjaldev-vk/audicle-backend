@@ -28,6 +28,7 @@ def error_response(message, code, errors=None, status_code=status.HTTP_400_BAD_R
         errors = {}
     return Response(
         {
+            "success": False,
             "status": "error",
             "code": code,
             "message": message,

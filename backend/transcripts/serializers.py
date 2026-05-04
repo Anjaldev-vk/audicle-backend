@@ -256,3 +256,37 @@ class InternalSummaryCompleteSerializer(serializers.Serializer):
         allow_null=True,
         allow_blank=True,
     )
+
+
+class TranscriptSegmentEditSerializer(serializers.ModelSerializer):
+    """Used for PATCH — only text and speaker_name are editable."""
+
+    class Meta:
+        model = TranscriptSegment
+        fields = [
+            "id",
+            "speaker_label",
+            "speaker_name",
+            "text",
+            "start_seconds",
+            "end_seconds",
+            "confidence",
+            "is_edited",
+            "created_at",
+        ]
+        read_only_fields = [
+            "id",
+            "speaker_label",
+            "start_seconds",
+            "end_seconds",
+            "confidence",
+            "is_edited",
+            "created_at",
+        ]
+
+    def validate_text(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("Segment text cannot be empty.")
+        return value
+
