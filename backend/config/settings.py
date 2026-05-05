@@ -70,6 +70,7 @@ INSTALLED_APPS = [
     'notifications',
     'channels',
     'search',
+    'action_items',
 ]
 
 MIDDLEWARE = [
@@ -240,17 +241,17 @@ SIMPLE_JWT = {
 CORS_ALLOW_CREDENTIALS = True
 
 # List of frontend URLs allowed to access this API
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    # Add your production frontend URL here
-]
+CORS_ALLOWED_ORIGINS = os.environ.get('CORS_ALLOWED_ORIGINS', 'http://localhost:5173,http://127.0.0.1:5173').split(',')
 
 # CSRF protection: Ensure cookies are sent safely
 CSRF_COOKIE_HTTPONLY = False  # Set to True only if not using JS to read CSRF token
-CSRF_TRUSTED_ORIGINS = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
+CSRF_TRUSTED_ORIGINS = os.environ.get('CORS_ALLOWED_ORIGINS', 'http://localhost:5173,http://127.0.0.1:5173').split(',')
+
+# ------------------ CORS Allowed Headers ------------------
+from corsheaders.defaults import default_headers
+
+CORS_ALLOW_HEADERS = list(default_headers) + [
+    "x-workspace-id",
 ]
 
 # Google OAuth Client ID

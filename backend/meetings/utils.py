@@ -26,6 +26,12 @@ def get_meeting_or_404(meeting_id: str, user, organisation=None):
     """
     mixin = TenantQuerysetMixin()
     try:
-        return mixin.get_meeting_queryset(user, organisation).get(id=meeting_id)
-    except (Meeting.DoesNotExist, Exception):
+        qs = mixin.get_meeting_queryset(user, organisation)
+        meeting = qs.get(id=meeting_id)
+        return meeting
+    except Meeting.DoesNotExist:
+        logger.warning("get_meeting_or_404: Meeting %s not found in queryset for user %s (org %s)", meeting_id, user.id, organisation.id if organisation else "None")
+        return None
+    except Exception as exc:
+        logger.error("get_meeting_or_404: Error fetching meeting %s: %s", meeting_id, exc)
         return None

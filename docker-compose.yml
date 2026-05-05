@@ -62,11 +62,13 @@ services:
       - ./backend:/app
       - media_files:/app/media
       - static_files:/app/staticfiles
-    # Ports removed as Gateway handles external traffic
+    ports:
+      - "8000:8000"
+    # Ports removed as Gateway handles external traffic (Re-added for direct access)
     env_file:
       - .env
     environment:
-      - DEBUG=1
+      - DEBUG=True
       - AI_BACKEND=${AI_BACKEND}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - GEMINI_MODEL=${GEMINI_MODEL}
@@ -93,7 +95,7 @@ services:
     env_file:
       - .env
     environment:
-      - DEBUG=1
+      - DEBUG=True
     depends_on:
       db:
         condition: service_healthy
@@ -114,7 +116,7 @@ services:
     env_file:
       - .env
     environment:
-      - DEBUG=1
+      - DEBUG=True
     depends_on:
       db:
         condition: service_healthy

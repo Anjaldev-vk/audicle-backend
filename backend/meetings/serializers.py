@@ -3,7 +3,7 @@ import logging
 from rest_framework import serializers
 
 from accounts.models import User
-from meetings.models import Meeting, MeetingParticipant
+from meetings.models import Meeting, MeetingParticipant, MeetingTemplate
 
 logger = logging.getLogger("meetings")
 
@@ -139,3 +139,18 @@ class UpdateMeetingSerializer(serializers.ModelSerializer):
                 "Only scheduled meetings can be edited."
             )
         return attrs
+
+
+class MeetingTemplateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MeetingTemplate
+        fields = [
+            'id', 'name', 'description',
+            'default_participants', 'summary_format',
+            'created_by', 'organisation',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'created_by', 'organisation',
+            'created_at', 'updated_at',
+        ]

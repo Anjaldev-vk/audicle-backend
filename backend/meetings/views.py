@@ -4,9 +4,10 @@ import logging
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
+from rest_framework.response import Response
 
 from accounts.models import User
-from meetings.models import Meeting, MeetingParticipant
+from meetings.models import Meeting, MeetingParticipant, MeetingTemplate
 from meetings.permissions import IsMeetingOwnerOrOrgAdmin
 from meetings.serializers import (
     CreateMeetingSerializer,
@@ -14,6 +15,7 @@ from meetings.serializers import (
     CreateMeetingParticipantSerializer,
     MeetingSerializer,
     UpdateMeetingSerializer,
+    MeetingTemplateSerializer,
 )
 from meetings.utils import get_meeting_or_404, TenantQuerysetMixin
 from utils.response import success_response, error_response
@@ -345,3 +347,71 @@ class MeetingParticipantDeleteView(APIView, TenantQuerysetMixin):
             data={},
             status_code=status.HTTP_200_OK,
         )
+
+
+class MeetingTemplateListCreateView(APIView):
+    """GET + POST /api/v1/meetings/templates/"""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if request.organisation:
+            qs = MeetingTemplate.objects.filter(
+                organisation=request.organisation
+            )
+        else:
+            qs = MeetingTemplate.objects.filter(
+                organisation=None,
+                created_by=request.user,
+            )
+        qs = qs.select_related('created_by').order_by('name')
+        serializer = MeetingTemplateSerializer(qs, many=True)
+        return success_response(data=serializer.data, message='Templates fetched')
+
+    def post(self, request):
+        serializer = MeetingTemplateSerializer(data=request.data)
+        if not serializer.is_valid():
+            return error_response(
+                code='validation_error',
+                message='Invalid data',
+                errors=serializer.errors,
+                status_code=400,
+            )
+        template = serializer.save(
+            created_by=request.user,
+            organisation=request.organisation,
+        )
+        logger.info(
+            'Meeting template %s created by user %s', template.id, request.user.id
+        )
+        return success_response(
+            data=MeetingTemplateSerializer(template).data,
+            message='Template created',
+            status_code=201,
+        )
+
+
+class MeetingTemplateDeleteView(APIView):
+    """DELETE /api/v1/meetings/templates/<id>/"""
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, template_id):
+        try:
+            if request.organisation:
+                template = MeetingTemplate.objects.get(
+                    id=template_id,
+                    organisation=request.organisation,
+                )
+            else:
+                template = MeetingTemplate.objects.get(
+                    id=template_id,
+                    organisation=None,
+                    created_by=request.user,
+                )
+        except MeetingTemplate.DoesNotExist:
+            return error_response(code='not_found', message='Template not found', status_code=404)
+
+        template.delete()
+        logger.info(
+            'Meeting template %s deleted by user %s', template_id, request.user.id
+        )
+        return success_response(message='Template deleted')

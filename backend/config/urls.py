@@ -32,11 +32,14 @@ urlpatterns = [
 #---------------------------------- Accounts API ----------------------------------
     path('api/<str:version>/accounts/', include('accounts.urls')),
 
-#---------------------------------- Transcripts API ----------------------------------
-    path("api/v1/", include("transcripts.urls", namespace="transcripts")),
-
 #---------------------------------- Meetings API ----------------------------------
     path('api/v1/meetings/', include('meetings.urls', namespace='meetings')),
+    
+#---------------------------------- Action Items API (Cross-meeting) ----------------
+    path('api/v1/action-items/', include('action_items.urls')),
+
+#---------------------------------- Transcripts API ----------------------------------
+    path("api/v1/", include("transcripts.urls", namespace="transcripts")),
 
 #---------------------------------- RAG API ----------------------------------
     path('api/v1/rag/', include('rag.urls')),

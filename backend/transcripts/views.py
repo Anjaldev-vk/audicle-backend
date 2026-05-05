@@ -26,6 +26,7 @@ from utils.response import error_response, success_response
 from utils.permissions import IsInternalService
 from utils.pagination import StandardPagination
 from notifications.tasks import notify_transcription_done, notify_summary_done
+from action_items.tasks import populate_action_items_from_summary
 
 logger = logging.getLogger("transcripts")
 
@@ -731,6 +732,9 @@ class InternalSummaryCompleteView(APIView):
                         meeting_title=meeting.title,
                         workspace_id=str(meeting.organisation.id) if meeting.organisation else None,
                     )
+
+                    # Create action items from summary
+                    populate_action_items_from_summary.delay(str(summary.id))
 
                     logger.info(
                         "Summary saved for meeting %s — %d action items %d decisions",

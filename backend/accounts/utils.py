@@ -15,7 +15,7 @@ def generate_otp(length=6):
 def get_workspaces_for_user(user):
     workspaces = [{
         'type': 'personal',
-        'id': None,
+        'id': 'personal',
         'name': f"{user.first_name}'s Workspace",
         'plan': user.plan,
         'role': None,

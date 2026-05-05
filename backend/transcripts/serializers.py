@@ -11,14 +11,16 @@ class TranscriptSegmentSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "speaker_label",
+            "speaker_name",
             "text",
             "start_seconds",
             "end_seconds",
             "confidence",
             "duration_seconds",
+            "is_edited",
             "created_at",
         ]
-        read_only_fields = ["id", "duration_seconds", "created_at"]
+        read_only_fields = ["id", "duration_seconds", "is_edited", "created_at"]
 
 
 class TranscriptSerializer(serializers.ModelSerializer):
@@ -68,11 +70,13 @@ class TranscriptSegmentListSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "speaker_label",
+            "speaker_name",
             "text",
             "start_seconds",
             "end_seconds",
             "confidence",
             "duration_seconds",
+            "is_edited",
         ]
 
 

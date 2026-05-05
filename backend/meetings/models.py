@@ -159,3 +159,43 @@ class MeetingParticipant(models.Model):
 
     def __str__(self):
         return f"{self.name} — {self.meeting.title} ({self.get_role_display()})"
+
+
+class MeetingTemplate(models.Model):
+    id = models.UUIDField(
+        primary_key=True,
+        default=__import__("uuid").uuid4,
+        editable=False,
+    )
+    organisation = models.ForeignKey(
+        Organisation,
+        on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='meeting_templates',
+    )
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='meeting_templates',
+    )
+    name = models.CharField(max_length=255)
+    description = models.TextField(blank=True, default="")
+    
+    # JSON field for default participants: [{"name": "...", "email": "...", "role": "..."}]
+    default_participants = models.JSONField(default=list, blank=True)
+    
+    # Custom format for AI summary (optional)
+    summary_format = models.TextField(blank=True, default="")
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['name']
+        indexes = [
+            models.Index(fields=['organisation']),
+            models.Index(fields=['created_by']),
+        ]
+
+    def __str__(self):
+        return self.name
