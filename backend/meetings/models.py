@@ -71,6 +71,14 @@ class Meeting(models.Model):
     # Soft delete
     is_archived = models.BooleanField(default=False)
 
+    # Phase 17 — Calendar integration
+    google_event_id = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        help_text="Google Calendar event ID — used to prevent duplicate imports",
+    )
+
     # Auto timestamps
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -82,6 +90,7 @@ class Meeting(models.Model):
             models.Index(fields=["created_by",   "is_archived"]),
             models.Index(fields=["status"]),
             models.Index(fields=["scheduled_at"]),
+            models.Index(fields=["google_event_id"]),  # NEW Phase 17
         ]
         verbose_name = "Meeting"
         verbose_name_plural = "Meetings"

@@ -10,6 +10,7 @@ from meetings.models import Meeting
 from utils.response import error_response, success_response
 from utils.permissions import IsInternalService
 from notifications.tasks import notify_meeting_started, notify_bot_failed
+from analytics.tasks import track_meeting_completed, track_bot_joined
 
 logger = logging.getLogger("meetings")
 
@@ -78,6 +79,8 @@ class BotStatusView(APIView):
                 "BotStatusView: bot recording meeting %s", meeting_id
             )
 
+            track_bot_joined.delay(str(meeting.id))
+
             # Notify the user that the bot has joined and recording has started
             notify_meeting_started.delay(
                 user_id=str(meeting.created_by.id),
@@ -125,6 +128,14 @@ class BotStatusView(APIView):
                 meeting_id=str(meeting.id),
                 meeting_title=meeting.title,
                 workspace_id=str(meeting.organisation.id) if meeting.organisation else None,
+            )
+
+        elif new_status == Meeting.Status.COMPLETED:
+            meeting.status = Meeting.Status.COMPLETED
+            track_meeting_completed.delay(str(meeting.id))
+            logger.info(
+                "BotStatusView: meeting %s completed (analytics tracked)",
+                meeting_id,
             )
 
         # ── 5. Save + respond ─────────────────────────────────────────────────

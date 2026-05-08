@@ -234,6 +234,11 @@ class MeetingSummary(models.Model):
         default=list,
         help_text="List of next steps",
     )
+    translations = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Stores translated versions of the summary: { 'Hindi': { 'summary': '...', ... } }",
+    )
     retry_count = models.PositiveIntegerField(
         default=0,
     )

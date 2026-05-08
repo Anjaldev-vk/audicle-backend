@@ -79,8 +79,15 @@ class WorkspaceMiddleware:
         request.membership = None
         request.workspace_type = 'personal'
 
-        # 1. Resolve User (Django session or JWT)
+        # 1. Resolve User (Django session or JWT or force_authenticate)
         user = getattr(request, 'user', None)
+        
+        # Support for DRF force_authenticate in tests
+        if not (user and user.is_authenticated):
+            if hasattr(request, '_force_auth_user'):
+                request.user = request._force_auth_user
+                user = request.user
+
         if not (user and user.is_authenticated):
             # Try manual JWT authentication for API requests
             from rest_framework_simplejwt.authentication import JWTAuthentication

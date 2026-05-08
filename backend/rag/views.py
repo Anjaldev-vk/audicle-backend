@@ -9,6 +9,7 @@ from transcripts.models import Transcript
 from utils.response import success_response, error_response
 from utils.ai_client import get_ai_provider
 from utils.pagination import StandardPagination
+from utils.plan_limits import check_rag_access
 from .models import EmbeddingChunk, ChatSession, ChatMessage
 from .serializers import (
     RAGSearchSerializer,
@@ -18,6 +19,7 @@ from .serializers import (
     ChatMessageCreateSerializer,
     InternalEmbedSerializer,
 )
+from analytics.tasks import track_rag_query
 from .utils import (
     search_similar_chunks,
     build_context_from_chunks,
@@ -115,6 +117,12 @@ class ChatSessionListCreateView(APIView):
         return paginator.get_paginated_response(serializer.data)
 
     def post(self, request):
+        # ── Plan limit check ──────────────────────────────────
+        limit_error = check_rag_access(request.user)
+        if limit_error:
+            return limit_error
+        # ── End limit check ───────────────────────────────────
+
         with transaction.atomic():
             session = ChatSession.objects.create(
                 user=request.user,
@@ -194,6 +202,12 @@ class ChatMessageCreateView(APIView):
             return None
 
     def post(self, request, session_id):
+        # ── Plan limit check ──────────────────────────────────
+        limit_error = check_rag_access(request.user)
+        if limit_error:
+            return limit_error
+        # ── End limit check ───────────────────────────────────
+
         session = self.get_session(session_id, request.user)
         if not session:
             return error_response(
@@ -219,6 +233,17 @@ class ChatMessageCreateView(APIView):
             session=session,
             role=ChatMessage.Role.USER,
             content=user_content
+        )
+
+        workspace_id = (
+            str(request.organisation.id)
+            if request.organisation
+            else str(request.user.id)
+        )
+        track_rag_query.delay(
+            user_id=str(request.user.id),
+            workspace_id=workspace_id,
+            session_id=str(session_id),
         )
 
         # Auto-title session from first message

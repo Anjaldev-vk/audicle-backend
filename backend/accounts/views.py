@@ -40,6 +40,8 @@ from utils.cache_keys import (
 from utils.pagination import StandardPagination
 from notifications.tasks import notify_invite_accepted
 
+from utils.plan_limits import check_workspace_limit, check_member_limit
+
 logger = logging.getLogger(__name__)
 
 
@@ -585,6 +587,12 @@ class InviteMemberView(APIView):
     permission_classes = [IsAuthenticated, IsOrgAdmin]
 
     def post(self, request, *args, **kwargs):
+        # ── Plan limit check ──────────────────────────────────
+        limit_error = check_member_limit(request.organisation)
+        if limit_error:
+            return limit_error
+        # ── End limit check ───────────────────────────────────
+
         serializer = CreateOrganisationInviteSerializer(
             data=request.data, context={'request': request}
         )
@@ -746,6 +754,12 @@ class WorkspaceCreateView(generics.GenericAPIView):
     serializer_class = OrganisationCreateSerializer
 
     def post(self, request, *args, **kwargs):
+        # ── Plan limit check ──────────────────────────────────
+        limit_error = check_workspace_limit(request.user)
+        if limit_error:
+            return limit_error
+        # ── End limit check ───────────────────────────────────
+
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 

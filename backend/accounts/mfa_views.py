@@ -5,6 +5,9 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
+import qrcode
+import io
+import base64
 
 from accounts.mfa_serializers import (
     DisableMFASerializer,
@@ -64,9 +67,24 @@ class EnableMFAView(APIView):
         user.mfa_secret = secret
         user.save(update_fields=["mfa_secret"])
 
+        # Generate QR code as Base64 data URI
+        qr = qrcode.QRCode(version=1, box_size=10, border=5)
+        qr.add_data(totp_uri)
+        qr.make(fit=True)
+        img = qr.make_image(fill_color="black", back_color="white")
+        
+        buffer = io.BytesIO()
+        img.save(buffer, format="PNG")
+        qr_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
+        qr_code_url = f"data:image/png;base64,{qr_base64}"
+
         return success_response(
             message="Scan the QR code with your authenticator app, then call verify-setup/.",
-            data={"totp_uri": totp_uri},
+            data={
+                "totp_uri": totp_uri,
+                "qr_code_url": qr_code_url,
+                "secret": secret,
+            },
             status_code=status.HTTP_200_OK
         )
 

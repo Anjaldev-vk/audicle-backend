@@ -198,11 +198,16 @@ class TestRetrySummary:
 @pytest.mark.django_db
 class TestTranslateSummary:
 
-    @patch("transcripts.views.SummaryTranslateView._translate")
+    @patch("utils.ai_client.GeminiProvider.generate_json")
     def test_translate_returns_translated_text(
-        self, mock_translate, org_admin_client, completed_summary
+        self, mock_generate, org_admin_client, completed_summary
     ):
-        mock_translate.return_value = "യോഗം പദ്ധതി സമയക്രമം ചർച്ച ചെയ്തു."
+        mock_generate.return_value = {
+            "summary": "യോഗം പദ്ധതി സമയക്രമം ചർച്ച ചെയ്തു.",
+            "key_points": ["സമയക്രമം ചർച്ച ചെയ്തു"],
+            "decisions": ["അവസാന തീയതി മെയ് വരെ നീട്ടി"],
+            "next_steps": ["തുടർനടപടികൾ ഷെഡ്യൂൾ ചെയ്യുക"]
+        }
         response = org_admin_client.post(
             reverse(
                 "transcripts:summary-translate",
@@ -217,11 +222,16 @@ class TestTranslateSummary:
         assert data["original_language"] == "English"
         assert "translated_summary" in data
 
-    @patch("transcripts.views.SummaryTranslateView._translate")
+    @patch("utils.ai_client.GeminiProvider.generate_json")
     def test_translate_normalizes_language_name(
-        self, mock_translate, org_admin_client, completed_summary
+        self, mock_generate, org_admin_client, completed_summary
     ):
-        mock_translate.return_value = "नमस्ते"
+        mock_generate.return_value = {
+            "summary": "नमस्ते",
+            "key_points": [],
+            "decisions": [],
+            "next_steps": []
+        }
         response = org_admin_client.post(
             reverse(
                 "transcripts:summary-translate",

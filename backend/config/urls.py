@@ -50,6 +50,12 @@ urlpatterns = [
 #---------------------------------- Search API ----------------------------------
     path('api/v1/', include('search.urls')),
 
+#---------------------------------- Analytics API ----------------------------------
+    path('api/v1/analytics/', include('analytics.urls')),
+
+#---------------------------------- Calendar API ----------------------------------
+    path("api/v1/", include("calendar_integration.urls")),
+
 #------------------------------------ internal  ------------------------------------
     path('internal/', include(rag_urls.internal_urlpatterns)),
     path('internal/bot/status/', BotStatusView.as_view(), name='internal-bot-status'),

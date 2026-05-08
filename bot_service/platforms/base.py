@@ -6,6 +6,7 @@ import time
 from abc import ABC, abstractmethod
 
 from playwright.sync_api import sync_playwright, Browser, Page
+from playwright_stealth import stealth_sync
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +51,8 @@ class BaseMeetingBot(ABC):
                     '--no-sandbox',
                     '--disable-setuid-sandbox',
                     '--disable-dev-shm-usage',
-                    '--use-fake-ui-for-media-stream',   # no camera/mic permission prompts
+                    '--use-fake-ui-for-media-stream',       # auto-accept permission prompts
+                    '--use-fake-device-for-media-stream',    # provide fake mic/camera devices
                     '--autoplay-policy=no-user-gesture-required',
                     '--disable-blink-features=AutomationControlled',
                 ],
@@ -64,8 +66,8 @@ class BaseMeetingBot(ABC):
             )
 
             page = context.new_page()
-            # Stealth: remove webdriver property
-            page.add_init_script("delete Object.getPrototypeOf(navigator).webdriver")
+            # Stealth: apply playwright-stealth to bypass bot detection
+            stealth_sync(page)
 
             try:
                 logger.info('Navigating to %s', self.meeting_url)
@@ -117,11 +119,29 @@ class BaseMeetingBot(ABC):
         while time.time() - start < self.JOIN_TIMEOUT:
             if self.is_in_meeting(page):
                 logger.info('Bot successfully joined meeting')
+                try:
+                    page.screenshot(path="/tmp/joined_meeting.png", timeout=5000)
+                except Exception:
+                    pass
                 return
             time.sleep(3)
-        page.screenshot(path="/tmp/join_timeout.png")
+        # Take a diagnostic screenshot (non-fatal if fonts are slow)
+        try:
+            page.screenshot(path="/tmp/join_timeout.png", timeout=5000)
+        except Exception:
+            pass
+        # Log the current URL and page title for diagnostics
+        try:
+            logger.warning(
+                'Join timeout — current URL: %s, title: %s',
+                page.url,
+                page.title(),
+            )
+        except Exception:
+            pass
         logger.warning('Join timeout — failing bot')
         raise RuntimeError("Join timeout: Bot could not enter the meeting.")
+
 
     def _wait_for_meeting_end(self, page: Page) -> None:
         """Poll until meeting ends or duration cap reached."""

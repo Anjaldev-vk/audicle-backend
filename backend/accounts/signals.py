@@ -35,6 +35,7 @@ from django.db.models.signals import post_delete
 from accounts.models import Membership
 from utils.cache_keys import invalidate_user_cache, invalidate_org_cache
 from notifications.tasks import notify_member_joined
+from analytics.tasks import track_member_joined
 
 logger = logging.getLogger('accounts')
 
@@ -63,6 +64,11 @@ def on_membership_save(sender, instance, created, **kwargs):
                 member_name=instance.user.full_name,
                 workspace_id=str(instance.organisation.id),
             )
+
+        track_member_joined.delay(
+            user_id=str(instance.user.id),
+            workspace_id=str(instance.organisation.id),
+        )
 
 
 @receiver(post_delete, sender=Membership)

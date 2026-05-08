@@ -11,6 +11,10 @@ from .serializers import (
     ActionItemCreateSerializer,
     ActionItemUpdateSerializer,
 )
+from analytics.tasks import (
+    track_action_item_created,
+    track_action_item_completed,
+)
 import logging
 
 logger = logging.getLogger(__name__)
@@ -63,6 +67,17 @@ class MeetingActionItemListCreateView(APIView):
                 source=ActionItem.Source.MANUAL,
             )
 
+        workspace_id = (
+            str(request.organisation.id)
+            if request.organisation
+            else str(request.user.id)
+        )
+        track_action_item_created.delay(
+            action_item_id=str(item.id),
+            user_id=str(request.user.id),
+            workspace_id=workspace_id,
+        )
+
         logger.info('Action item %s created by user %s', item.id, request.user.id)
         return success_response(
             data=ActionItemSerializer(item).data,
@@ -107,6 +122,19 @@ class ActionItemDetailView(APIView):
             )
 
         serializer.save()
+
+        if serializer.validated_data.get('status') == 'done':
+            workspace_id = (
+                str(request.organisation.id)
+                if request.organisation
+                else str(request.user.id)
+            )
+            track_action_item_completed.delay(
+                action_item_id=str(item_id),
+                user_id=str(request.user.id),
+                workspace_id=workspace_id,
+            )
+
         logger.info('Action item %s updated by user %s', item_id, request.user.id)
         return success_response(
             data=ActionItemSerializer(item).data,

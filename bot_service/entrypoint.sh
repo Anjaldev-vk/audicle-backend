@@ -1,14 +1,18 @@
 #!/bin/bash
 set -e
 
+# Clean up any old lock files from previous crashes to allow Xvfb and dbus to start
+rm -f /tmp/.X99-lock /tmp/.X11-unix/X99 /run/dbus/pid
+
 # Create dbus directory and start dbus-daemon to avoid dbus errors
 mkdir -p /run/dbus
 dbus-daemon --system --fork || true
 
 # ── Virtual Display (needed for Chromium audio pipeline even in headless mode) ──
+# Run with -ac to allow all clients to connect
 Xvfb :99 -screen 0 1280x720x24 -ac &
 export DISPLAY=:99
-sleep 1
+sleep 2
 
 # ── PulseAudio with a null (virtual) sink ───────────────────────────────────────
 pulseaudio --start \

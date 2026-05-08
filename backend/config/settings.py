@@ -71,6 +71,8 @@ INSTALLED_APPS = [
     'channels',
     'search',
     'action_items',
+    'analytics',
+    'calendar_integration',
 ]
 
 MIDDLEWARE = [
@@ -256,6 +258,12 @@ CORS_ALLOW_HEADERS = list(default_headers) + [
 
 # Google OAuth Client ID
 GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID')
+GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET')
+GOOGLE_CALENDAR_REDIRECT_URI = os.environ.get(
+    'GOOGLE_CALENDAR_REDIRECT_URI',
+    default='http://localhost/api/v1/calendar/callback/',
+)
+FRONTEND_URL = os.environ.get('FRONTEND_URL', default='http://localhost')
 
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = os.environ.get('EMAIL_HOST')
@@ -287,7 +295,7 @@ LOGGING = {
             'formatter': 'verbose',
         },
         'file': {
-            'level': 'ERROR',
+            'level': 'INFO',
             'class': 'logging.FileHandler',
             'filename': os.path.join(LOGS_DIR, 'django_errors.log'),
             'formatter': 'verbose',
@@ -358,6 +366,11 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'meetings.auto_dispatch_bots',
         'schedule': crontab(minute='*/5'),
     },
+    # Phase 17 — Calendar sync runs every 15 minutes
+    'sync-all-calendars': {
+        'task': 'calendar_integration.sync_all_calendars',
+        'schedule': crontab(minute='*/15'),
+    },
 }
 
 
@@ -427,4 +440,10 @@ DYNAMODB_REGION = os.environ.get('AWS_DYNAMODB_REGION', 'ap-south-1')
 DYNAMODB_NOTIFICATIONS_TABLE = os.environ.get(
     'DYNAMODB_NOTIFICATIONS_TABLE',
     'audicle_notifications'
+)
+# --------------Analytics DynamoDB Table----------------
+
+DYNAMODB_ANALYTICS_TABLE = os.environ.get(
+    'DYNAMODB_ANALYTICS_TABLE',
+    'audicle_analytics'
 )

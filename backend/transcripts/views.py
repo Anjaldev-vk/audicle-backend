@@ -27,6 +27,7 @@ from utils.permissions import IsInternalService
 from utils.pagination import StandardPagination
 from notifications.tasks import notify_transcription_done, notify_summary_done
 from action_items.tasks import populate_action_items_from_summary
+from analytics.tasks import track_transcription_done, track_summary_done
 
 logger = logging.getLogger("transcripts")
 
@@ -269,6 +270,14 @@ class InternalTranscriptCompleteView(APIView):
                     # Update meeting status
                     meeting.status = Meeting.Status.COMPLETED
                     meeting.save(update_fields=["status"])
+
+                    track_transcription_done.delay(
+                        meeting_id=str(transcript.meeting.id),
+                        user_id=str(transcript.created_by.id),
+                        workspace_id=str(transcript.organisation.id)
+                                  if transcript.organisation
+                                  else str(transcript.created_by.id),
+                    )
 
                     # Notify the user that transcription is done
                     notify_transcription_done.delay(
@@ -566,8 +575,10 @@ class SummaryTranslateView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, meeting_id):
+        logger.info("SummaryTranslateView.post called for meeting %s with data: %s", meeting_id, request.data)
         meeting = get_meeting_or_404(meeting_id, request.user, request.organisation)
         if not meeting:
+            logger.warning("Meeting %s not found for user %s", meeting_id, request.user)
             return error_response(
                 message="Meeting not found.",
                 code="not_found",
@@ -588,77 +599,73 @@ class SummaryTranslateView(APIView):
             )
 
         # Validate request
-        serializer = TranslateSummarySerializer(data=request.data)
+        data = request.data
+        if isinstance(data, str):
+            data = {"target_language": data}
+            
+        serializer = TranslateSummarySerializer(data=data)
         serializer.is_valid(raise_exception=True)
         target_language = serializer.validated_data["target_language"]
 
         # Build full summary text for translation
-        key_points_text = "\n".join(f"- {p}" for p in summary.key_points)
-        decisions_text = "\n".join(f"- {d}" for d in summary.decisions)
-        next_steps_text = "\n".join(f"- {s}" for s in summary.next_steps)
+        payload = {
+            "summary": summary.summary,
+            "key_points": summary.key_points,
+            "decisions": summary.decisions,
+            "next_steps": summary.next_steps,
+        }
 
-        summary_text = (
-            f"Summary:\n{summary.summary}\n\n"
-            f"Key Points:\n{key_points_text}\n\n"
-            f"Decisions:\n{decisions_text}\n\n"
-            f"Next Steps:\n{next_steps_text}"
-        ).strip()
+        system_prompt = (
+            "You are a professional translator. "
+            f"Translate the provided JSON meeting components to {target_language}. "
+            "Return a JSON object with the exact same keys: summary, key_points, decisions, next_steps. "
+            "Values should be translated strings or lists of strings."
+        )
 
-        # Translate using configured AI provider
-        translated = self._translate(summary_text, target_language)
+        logger.info("Attempting single-call translation to %s for meeting %s", target_language, meeting_id)
+        
+        from utils.ai_client import get_ai_provider
+        import json
+        provider = get_ai_provider()
+        translated_data = provider.generate_json(
+            system_prompt=system_prompt,
+            user_prompt=json.dumps(payload),
+            temperature=0.1,
+        )
 
-        if not translated:
+        if not translated_data:
+            logger.error("Translation failed (AI returned None) for meeting %s", meeting_id)
             return error_response(
-                message=f"Translation to {target_language} failed. Please try again.",
+                message=f"Translation to {target_language} failed. AI provider unavailable.",
                 code="translation_failed",
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
 
-        logger.info(
-            "Summary translated to %s for meeting %s by %s",
-            target_language,
-            meeting_id,
-            request.user.email,
-        )
+        # Persist translation to database
+        if not summary.translations:
+            summary.translations = {}
+        
+        summary.translations[target_language] = {
+            "summary": translated_data.get("summary", ""),
+            "key_points": translated_data.get("key_points", []),
+            "decisions": translated_data.get("decisions", []),
+            "next_steps": translated_data.get("next_steps", []),
+        }
+        summary.save(update_fields=["translations", "updated_at"])
 
         return success_response(
-            message=f"Summary translated to {target_language} successfully.",
+            message=f"Successfully translated summary to {target_language}",
             data={
-                "target_language":    target_language,
-                "translated_summary": translated,
-                "original_language":  "English",
+                "target_language": target_language,
+                "translated_summary": translated_data.get("summary", ""),
+                "translated_key_points": translated_data.get("key_points", []),
+                "translated_decisions": translated_data.get("decisions", []),
+                "translated_next_steps": translated_data.get("next_steps", []),
+                "original_language": "English",  # TODO: Detect this dynamically
             },
             status_code=status.HTTP_200_OK,
         )
 
-    def _translate(self, text: str, target_language: str) -> str | None:
-        """
-        Translate text using the configured AI provider.
-        Works with Gemini, OpenAI, or Ollama — no code changes needed.
-        Just change AI_BACKEND in .env to switch providers.
-        """
-        try:
-            from utils.ai_client import get_ai_provider
-
-            provider = get_ai_provider()
-            return provider.generate(
-                system_prompt=(
-                    "You are a professional translator. "
-                    f"Translate the following text to {target_language}. "
-                    "Preserve meaning, tone and formatting exactly. "
-                    "Return only the translated text with no explanation."
-                ),
-                user_prompt=text,
-                temperature=0.1,
-                max_tokens=2000,
-            )
-        except Exception as exc:
-            logger.error(
-                "Translation to %s failed: %s",
-                target_language,
-                exc,
-            )
-            return None
 
 
 # ── Internal Summary Endpoint ─────────────────────────────────────────────────
@@ -724,6 +731,14 @@ class InternalSummaryCompleteView(APIView):
                     summary.next_steps = data.get("next_steps", [])
                     summary.error_message = None
                     summary.save()
+
+                    track_summary_done.delay(
+                        meeting_id=str(summary.meeting.id),
+                        user_id=str(summary.created_by.id),
+                        workspace_id=str(summary.organisation.id)
+                                  if summary.organisation
+                                  else str(summary.created_by.id),
+                    )
 
                     # Notify the user that summary is done
                     notify_summary_done.delay(

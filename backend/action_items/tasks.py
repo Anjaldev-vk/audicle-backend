@@ -51,12 +51,26 @@ def populate_action_items_from_summary(self, summary_id):
                 for item in raw_items
                 if isinstance(item, str) and item.strip()
             ]
-            ActionItem.objects.bulk_create(items_to_create)
+            new_items = ActionItem.objects.bulk_create(items_to_create)
             logger.info(
                 'populate_action_items: created %s items for meeting %s',
                 len(items_to_create),
                 summary.meeting.id,
             )
+
+            # 3. Trigger analytics for each new item
+            from analytics.tasks import track_action_item_created
+            workspace_id = (
+                str(summary.meeting.organisation.id)
+                if summary.meeting.organisation
+                else str(summary.created_by.id)
+            )
+            for item in new_items:
+                track_action_item_created.delay(
+                    action_item_id=str(item.id),
+                    user_id=str(summary.created_by.id),
+                    workspace_id=workspace_id,
+                )
     except Exception as exc:
         logger.error(
             'populate_action_items failed for summary %s: %s', summary_id, exc

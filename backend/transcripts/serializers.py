@@ -162,6 +162,7 @@ class MeetingSummarySerializer(serializers.ModelSerializer):
             "action_items",
             "decisions",
             "next_steps",
+            "translations",
             "retry_count",
             "error_message",
             "can_retry",
@@ -198,21 +199,33 @@ class TranslateSummarySerializer(serializers.Serializer):
     """
     target_language = serializers.CharField(
         max_length=50,
-        help_text="Language name e.g. Malayalam, Hindi, French, Arabic",
+        required=False,
+    )
+    language = serializers.CharField(
+        max_length=50,
+        required=False,
     )
 
-    def validate_target_language(self, value):
+    def validate(self, data):
         """
-        Clean and normalize the language name.
-        'malayalam' → 'Malayalam'
-        ' hindi '   → 'Hindi'
+        Support both 'target_language' and 'language' keys.
+        Normalize to 'target_language'.
         """
-        cleaned = value.strip().title()
+        target = data.get("target_language") or data.get("language")
+        
+        if not target:
+            raise serializers.ValidationError({
+                "target_language": "This field (or 'language') is required."
+            })
+            
+        # Clean and normalize
+        cleaned = target.strip().title()
         if not cleaned:
-            raise serializers.ValidationError(
-                "Target language cannot be empty."
-            )
-        return cleaned
+            raise serializers.ValidationError({
+                "target_language": "Target language cannot be empty."
+            })
+            
+        return {"target_language": cleaned}
 
 
 class InternalSummaryCompleteSerializer(serializers.Serializer):

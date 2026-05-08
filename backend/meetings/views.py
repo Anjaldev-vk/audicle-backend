@@ -20,6 +20,8 @@ from meetings.serializers import (
 from meetings.utils import get_meeting_or_404, TenantQuerysetMixin
 from utils.response import success_response, error_response
 from utils.pagination import StandardPagination
+from analytics.tasks import track_meeting_created, track_meeting_completed, track_bot_joined
+from utils.plan_limits import check_bot_access, check_meeting_limit, check_org_meeting_limit
 
 logger = logging.getLogger("meetings")
 
@@ -47,6 +49,16 @@ class MeetingListCreateView(APIView, TenantQuerysetMixin):
         return paginator.get_paginated_response(serializer.data)
 
     def post(self, request):
+        # ── Plan limit check ──────────────────────────────────
+        if request.organisation:
+            limit_error = check_org_meeting_limit(request.organisation)
+        else:
+            limit_error = check_meeting_limit(request.user)
+
+        if limit_error:
+            return limit_error
+        # ── End limit check ───────────────────────────────────
+
         serializer = CreateMeetingSerializer(
             data=request.data,
             context={"request": request},
@@ -59,6 +71,8 @@ class MeetingListCreateView(APIView, TenantQuerysetMixin):
             meeting.id,
             request.user.email,
         )
+
+        track_meeting_created.delay(str(meeting.id))
 
         return success_response(
             message="Meeting created successfully.",
@@ -169,6 +183,12 @@ class BotDispatchView(APIView, TenantQuerysetMixin):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, meeting_id):
+        # ── Plan limit check ──────────────────────────────────
+        limit_error = check_bot_access(request.user)
+        if limit_error:
+            return limit_error
+        # ── End limit check ───────────────────────────────────
+
         meeting = get_meeting_or_404(meeting_id, request.user, request.organisation)
         if not meeting:
             return error_response(
