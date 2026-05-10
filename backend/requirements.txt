@@ -59,3 +59,5 @@ channels-redis>=4.0.0
 daphne>=4.0.0
 qrcode>=8.0.0
 Pillow>=11.0.0
+razorpay==1.4.2
+setuptools<70

@@ -106,16 +106,30 @@ class WorkspaceMiddleware:
             if workspace_id and workspace_id != 'personal':
                 try:
                     from accounts.models import Membership
+                    # Ensure we have a valid UUID before querying to avoid silent ValueError swallow
+                    try:
+                        val = uuid.UUID(str(workspace_id))
+                    except ValueError:
+                        logger.warning("[workspace] Invalid UUID format: %s", workspace_id)
+                        return self.get_response(request)
+
                     membership = Membership.objects.select_related(
                         'organisation'
                     ).get(
                         user=user,
-                        organisation_id=workspace_id
+                        organisation_id=val
                     )
                     request.organisation = membership.organisation
                     request.membership = membership
                     request.workspace_type = 'organisation'
-                except Exception:
+                except Exception as e:
+                    # Log the failure so we can debug why isolation might fail
+                    logger.warning(
+                        "[workspace] Failed to resolve workspace %s for user %s: %s",
+                        workspace_id, user.email, str(e)
+                    )
+                    # If an ID was provided but lookup failed, we ensure organisation remains None
+                    # so the user sees their Personal meetings OR an empty list depending on the view.
                     pass
 
         return self.get_response(request)

@@ -6,9 +6,9 @@ from django.conf import settings
 class ActionItem(models.Model):
 
     class Status(models.TextChoices):
-        OPEN = 'open',        'Open'
+        PENDING = 'pending',     'Pending'
         IN_PROGRESS = 'in_progress', 'In Progress'
-        DONE = 'done',        'Done'
+        COMPLETED = 'completed',   'Completed'
 
     class Source(models.TextChoices):
         AI_GENERATED = 'ai_generated', 'AI Generated'
@@ -42,7 +42,7 @@ class ActionItem(models.Model):
     status = models.CharField(
         max_length=20,
         choices=Status.choices,
-        default=Status.OPEN,
+        default=Status.PENDING,
     )
     source = models.CharField(
         max_length=20,

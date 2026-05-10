@@ -12,20 +12,27 @@ class ActionItemSerializer(serializers.ModelSerializer):
     meeting_title = serializers.CharField(
         source='meeting.title', read_only=True
     )
+    content = serializers.CharField(
+        source='text', read_only=True
+    )
+    assignee_name = serializers.CharField(
+        source='assigned_to.full_name', read_only=True
+    )
 
     class Meta:
         model = ActionItem
         fields = [
             'id', 'meeting', 'meeting_title',
             'organisation', 'created_by',
-            'assigned_to', 'assigned_to_email', 'assigned_to_name',
-            'text', 'due_date', 'status', 'source',
+            'assigned_to', 'assigned_to_email', 'assigned_to_name', 'assignee_name',
+            'text', 'content', 'due_date', 'status', 'source',
             'created_at', 'updated_at',
         ]
         read_only_fields = [
             'id', 'organisation', 'created_by',
             'source', 'created_at', 'updated_at',
-            'meeting_title', 'assigned_to_email', 'assigned_to_name',
+            'meeting_title', 'assigned_to_email', 'assigned_to_name', 'assignee_name',
+            'content',
         ]
 
 

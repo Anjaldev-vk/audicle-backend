@@ -73,6 +73,7 @@ INSTALLED_APPS = [
     'action_items',
     'analytics',
     'calendar_integration',
+    'billing',
 ]
 
 MIDDLEWARE = [
@@ -127,7 +128,7 @@ DATABASES = {
 CACHES = {
     "default": {
         "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": "redis://redis:6379/1",
+        "LOCATION": os.environ.get("REDIS_CACHE_URL", "redis://redis:6379/1"),
         "OPTIONS": {
             "CLIENT_CLASS": "django_redis.client.DefaultClient",
         },
@@ -327,6 +328,21 @@ LOGGING = {
             'level': 'DEBUG',
             'propagate': False,
         },
+        'analytics': {
+            'handlers': ['console', 'file'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+        'action_items': {
+            'handlers': ['console', 'file'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+        'notifications': {
+            'handlers': ['console', 'file'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
     },
 }
 
@@ -447,3 +463,8 @@ DYNAMODB_ANALYTICS_TABLE = os.environ.get(
     'DYNAMODB_ANALYTICS_TABLE',
     'audicle_analytics'
 )
+
+# ------------------ Razorpay Configuration ------------------
+RAZORPAY_KEY_ID = os.environ.get("RAZORPAY_KEY_ID", "")
+RAZORPAY_KEY_SECRET = os.environ.get("RAZORPAY_KEY_SECRET", "")
+RAZORPAY_WEBHOOK_SECRET = os.environ.get("RAZORPAY_WEBHOOK_SECRET", "")

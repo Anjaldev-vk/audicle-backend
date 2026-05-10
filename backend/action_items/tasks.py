@@ -39,18 +39,26 @@ def populate_action_items_from_summary(self, summary_id):
                 source=ActionItem.Source.AI_GENERATED,
             ).delete()
 
-            items_to_create = [
-                ActionItem(
-                    meeting=summary.meeting,
-                    organisation=summary.meeting.organisation,
-                    created_by=summary.created_by,
-                    text=item.strip(),
-                    source=ActionItem.Source.AI_GENERATED,
-                    status=ActionItem.Status.OPEN,
-                )
-                for item in raw_items
-                if isinstance(item, str) and item.strip()
-            ]
+            items_to_create = []
+            for item in raw_items:
+                text = ""
+                if isinstance(item, str):
+                    text = item.strip()
+                elif isinstance(item, dict):
+                    text = item.get('task', item.get('text', '')).strip()
+                
+                if text:
+                    items_to_create.append(
+                        ActionItem(
+                            meeting=summary.meeting,
+                            organisation=summary.meeting.organisation,
+                            created_by=summary.created_by,
+                            text=text,
+                            source=ActionItem.Source.AI_GENERATED,
+                            status=ActionItem.Status.PENDING,
+                        )
+                    )
+
             new_items = ActionItem.objects.bulk_create(items_to_create)
             logger.info(
                 'populate_action_items: created %s items for meeting %s',

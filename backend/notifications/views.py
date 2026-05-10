@@ -15,21 +15,29 @@ class NotificationListView(APIView):
         limit = int(request.query_params.get('limit', 20))
         last_key = request.query_params.get('last_key')
 
-        result = repository.get_notifications(
-            user_id=request.user.id,
-            limit=limit,
-            last_key=last_key,
-        )
-        unread_count = repository.get_unread_count(request.user.id)
+        try:
+            result = repository.get_notifications(
+                user_id=request.user.id,
+                limit=limit,
+                last_key=last_key,
+            )
+            unread_count = repository.get_unread_count(request.user.id)
 
-        return success_response(
-            data={
-                'results':      result['items'],
-                'last_key':     result['last_key'],
-                'unread_count': unread_count,
-            },
-            message='Notifications fetched',
-        )
+            return success_response(
+                data={
+                    'results':      result['items'],
+                    'last_key':     result['last_key'],
+                    'unread_count': unread_count,
+                },
+                message='Notifications fetched',
+            )
+        except Exception as e:
+            logger.error('NotificationListView error: %s', e)
+            return error_response(
+                code='notification_error',
+                message='Failed to fetch notifications. Please check IAM permissions.',
+                status_code=502,
+            )
 
 
 class NotificationReadView(APIView):

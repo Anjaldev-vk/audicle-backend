@@ -8,13 +8,16 @@ class TenantQuerysetMixin:
     def get_meeting_queryset(self, user, organisation):
         from meetings.models import Meeting
         if organisation:
+            # Strictly filter by the active organization
             return Meeting.objects.filter(
                 organisation=organisation,
                 is_archived=False
             ).select_related('created_by', 'organisation')
+            
+        # Strictly filter by Personal (No Organisation)
         return Meeting.objects.filter(
             created_by=user,
-            organisation=None,
+            organisation__isnull=True,
             is_archived=False
         ).select_related('created_by')
 

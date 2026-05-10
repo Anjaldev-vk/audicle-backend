@@ -27,7 +27,7 @@ from utils.permissions import IsInternalService
 from utils.pagination import StandardPagination
 from notifications.tasks import notify_transcription_done, notify_summary_done
 from action_items.tasks import populate_action_items_from_summary
-from analytics.tasks import track_transcription_done, track_summary_done
+from analytics.tasks import track_transcription_done, track_summary_done, track_meeting_completed
 
 logger = logging.getLogger("transcripts")
 
@@ -278,6 +278,9 @@ class InternalTranscriptCompleteView(APIView):
                                   if transcript.organisation
                                   else str(transcript.created_by.id),
                     )
+
+                    # Track meeting completion for analytics dashboard
+                    track_meeting_completed.delay(str(meeting.id))
 
                     # Notify the user that transcription is done
                     notify_transcription_done.delay(

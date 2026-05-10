@@ -40,7 +40,7 @@ def action_item(user, meeting):
         meeting=meeting,
         created_by=user,
         text='Follow up with the client',
-        status=ActionItem.Status.OPEN,
+        status=ActionItem.Status.PENDING,
     )
 
 
@@ -97,11 +97,11 @@ def test_create_action_item_missing_text(auth_client, meeting):
 
 def test_get_action_item_detail_not_implemented(auth_client, action_item):
     url = '/api/v1/action-items/%s/' % action_item.id
-    res = auth_client.patch(url, {'status': 'done'}, format='json')
+    res = auth_client.patch(url, {'status': 'completed'}, format='json')
     assert res.status_code == 200
-    assert res.json()['data']['status'] == 'done'
+    assert res.json()['data']['status'] == 'completed'
     action_item.refresh_from_db()
-    assert action_item.status == 'done'
+    assert action_item.status == 'completed'
 
 
 def test_delete_action_item(auth_client, action_item):
@@ -131,15 +131,15 @@ def test_cross_meeting_list(auth_client, meeting, action_item):
 
 
 def test_cross_meeting_filter_by_status(auth_client, meeting, action_item):
-    action_item.status = 'done'
+    action_item.status = 'completed'
     action_item.save()
-    ActionItem.objects.create(meeting=meeting, created_by=action_item.created_by, text='Open Task', status='open')
+    ActionItem.objects.create(meeting=meeting, created_by=action_item.created_by, text='Open Task', status='pending')
 
-    url = '/api/v1/action-items/?status=done'
+    url = '/api/v1/action-items/?status=completed'
     res = auth_client.get(url)
     assert res.status_code == 200
     assert res.json()['data']['pagination']['total'] == 1
-    assert res.json()['data']['results'][0]['status'] == 'done'
+    assert res.json()['data']['results'][0]['status'] == 'completed'
 
 
 # ── Task Tests ───────────────────────────────────────────────────

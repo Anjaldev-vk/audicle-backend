@@ -19,10 +19,12 @@ def get_transcript_for_meeting(meeting_id: str, user, organisation):
 
         # Tenant isolation check
         if organisation:
+            # Must match the active organization
             if transcript.organisation != organisation:
                 return None
         else:
-            if transcript.created_by != user:
+            # Personal view: Must be created by user AND have no organization
+            if transcript.created_by != user or transcript.organisation is not None:
                 return None
 
         return transcript

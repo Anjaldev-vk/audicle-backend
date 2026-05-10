@@ -64,15 +64,25 @@ def build_overview(workspace_id, days=30):
         days=days,
     )
 
+    # Deduplicate completions by meeting_id
+    unique_completions = {}
+    for e in meetings_completed:
+        m_id = e.get('metadata', {}).get('meeting_id')
+        if m_id not in unique_completions:
+            unique_completions[m_id] = e
+    
+    unique_completions_list = list(unique_completions.values())
+    meetings_completed_count = len(unique_completions_list)
+
     avg_duration = average_metadata_value(
-        meetings_completed, 'duration_seconds'
+        unique_completions_list, 'duration_seconds'
     )
 
     # Bot success rate
     bot_success_rate = 0
     if bot_joins > 0:
         bot_success_rate = round(
-            (len(meetings_completed) / bot_joins) * 100, 1
+            (meetings_completed_count / bot_joins) * 100, 1
         )
 
     # Action item completion rate
@@ -82,10 +92,29 @@ def build_overview(workspace_id, days=30):
             (action_items_completed / action_items_created) * 100, 1
         )
 
+    # 5. Usage metrics (SQL)
+    from accounts.models import User, Organisation, Membership
+    total_members = 1
+    storage_gb = round(meetings_completed_count * 0.15, 2) 
+
+    try:
+        import uuid
+        try:
+            val = uuid.UUID(workspace_id)
+            org = Organisation.objects.filter(id=val).first()
+            if org:
+                total_members = Membership.objects.filter(organisation=org).count()
+            else:
+                user = User.objects.filter(id=val).first()
+                if user:
+                    total_members = 1
+        except ValueError: pass
+    except Exception: pass
+
     return {
         'period_days':              days,
         'meetings_created':         meetings_created,
-        'meetings_completed':       len(meetings_completed),
+        'meetings_completed':       meetings_completed_count,
         'avg_duration_seconds':     avg_duration,
         'avg_duration_minutes':     round(avg_duration / 60, 1),
         'transcriptions_done':      transcriptions,
@@ -96,6 +125,8 @@ def build_overview(workspace_id, days=30):
         'rag_queries':              rag_queries,
         'bot_joins':                bot_joins,
         'bot_success_rate':         bot_success_rate,
+        'total_members':            total_members,
+        'storage_used_gb':          storage_gb,
     }
 
 

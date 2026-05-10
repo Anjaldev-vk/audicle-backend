@@ -46,20 +46,21 @@ class BaseMeetingBot(ABC):
 
         with sync_playwright() as pw:
             browser = pw.chromium.launch(
-                headless=False,  # Must be False for audio capture via PulseAudio
+                headless=False,
                 args=[
                     '--no-sandbox',
                     '--disable-setuid-sandbox',
                     '--disable-dev-shm-usage',
-                    '--use-fake-ui-for-media-stream',       # auto-accept permission prompts
-                    '--use-fake-device-for-media-stream',    # provide fake mic/camera devices
+                    '--use-fake-ui-for-media-stream',
+                    '--use-fake-device-for-media-stream',
                     '--autoplay-policy=no-user-gesture-required',
                     '--disable-blink-features=AutomationControlled',
+                    '--window-size=1280,720',
                 ],
             )
 
             context = browser.new_context(
-                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
                 viewport={'width': 1280, 'height': 720},
                 permissions=['microphone', 'camera'],
                 ignore_https_errors=True,

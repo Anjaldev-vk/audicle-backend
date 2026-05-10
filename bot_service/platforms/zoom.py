@@ -30,19 +30,108 @@ class ZoomBot(BaseMeetingBot):
             logger.info("Zoom landing page URL: %s", page.url)
 
             # ── Step 1: Navigate to Zoom web client ──────────────────────────
-            current_url = page.url
-            match = re.search(r"/j/(\d+)", current_url)
-            if match:
-                meeting_number = match.group(1)
-                pwd = ""
-                pwd_match = re.search(r"pwd=([^&#]+)", current_url)
-                if pwd_match:
-                    pwd = f"?pwd={pwd_match.group(1)}"
-                web_url = f"https://app.zoom.us/wc/join/{meeting_number}{pwd}"
-                logger.info("Navigating to Zoom web client: %s", web_url)
-                page.goto(web_url, wait_until="domcontentloaded", timeout=30000)
+            # Direct URL construction causes Error 3001 for instant meetings.
+            # We must aggressively click "Join from browser" through the UI.
+            logger.info("Waiting for landing page to settle...")
+            page.wait_for_timeout(5000)
+
+            # Aggressively dismiss cookie banners and popups via JS
+            page.evaluate("""
+                () => {
+                    const closeBtns = document.querySelectorAll('.onetrust-close-btn-handler, [aria-label="Close"]');
+                    closeBtns.forEach(btn => btn.click());
+                    const banners = document.querySelectorAll('[id*="cookie"], [class*="cookie"], #onetrust-consent-sdk');
+                    banners.forEach(b => b.style.display = 'none');
+                }
+            """)
+            page.wait_for_timeout(1000)
+
+            # Click "Launch Meeting" if present
+            try:
+                page.evaluate("""
+                    () => {
+                        const els = Array.from(document.querySelectorAll('a, button, div[role="button"]'));
+                        for (const el of els) {
+                            if (el.innerText && el.innerText.trim().toLowerCase() === 'launch meeting') {
+                                el.click();
+                            }
+                        }
+                    }
+                """)
+            except Exception:
+                pass
             
-            # Wait for page to fully load
+            page.wait_for_timeout(3000)
+
+            # Click "Join from browser" or similar (poll for it to appear)
+            joined_from_browser = False
+            for attempt in range(10):
+                try:
+                    # Detect the "word word word" bot-block screen
+                    body_text = page.inner_text("body")
+                    if "word word word" in body_text[:500]:
+                        logger.warning("Zoom bot-block detected (word word word). Retrying navigation...")
+                        page.reload()
+                        page.wait_for_timeout(5000)
+                        continue
+
+                    # Check for new tab
+                    if len(page.context.pages) > 1:
+                        logger.info("Detected new tab opened. Switching...")
+                        page = page.context.pages[-1]
+                        joined_from_browser = True
+                        break
+
+                    # Try to click via Playwright native click first (more human-like)
+                    try:
+                        btn = page.locator('button:has-text("Join from browser"), a:has-text("Join from browser")').first
+                        if btn.is_visible(timeout=1000):
+                            btn.click()
+                            joined_from_browser = True
+                            logger.info("Clicked 'Join from browser' via Playwright click")
+                    except Exception:
+                        pass
+
+                    if not joined_from_browser:
+                        joined_from_browser = page.evaluate("""
+                            () => {
+                                const els = Array.from(document.querySelectorAll('a, button, div'));
+                                for (const el of els) {
+                                    const text = el.innerText ? el.innerText.trim().toLowerCase() : '';
+                                    if (text.includes('join from browser') || text.includes('join from your browser')) {
+                                        el.click();
+                                        return true;
+                                    }
+                                }
+                                return false;
+                            }
+                        """)
+                    
+                    if joined_from_browser:
+                        page.wait_for_timeout(3000)
+                        if len(page.context.pages) > 1:
+                            page = page.context.pages[-1]
+                        break
+                except Exception as e:
+                    logger.warning("Join attempt %d failed: %s", attempt, e)
+                
+                page.wait_for_timeout(2000)
+
+            if not joined_from_browser:
+                logger.warning("Could not find 'Join from browser' link. Attempting fallback URL construction.")
+                current_url = page.url
+                match = re.search(r"/j/(\d+)", current_url)
+                if match:
+                    meeting_number = match.group(1)
+                    pwd = ""
+                    pwd_match = re.search(r"pwd=([^&#]+)", current_url)
+                    if pwd_match:
+                        pwd = f"?pwd={pwd_match.group(1)}"
+                    web_url = f"https://app.zoom.us/wc/join/{meeting_number}{pwd}"
+                    logger.info("Navigating to Zoom web client fallback: %s", web_url)
+                    page.goto(web_url, wait_until="domcontentloaded", timeout=30000)
+            
+            # Wait for web client page to fully load
             page.wait_for_timeout(5000)
             self._safe_screenshot(page, "/tmp/zoom_step2_webclient.png")
             logger.info("Web client URL: %s", page.url)

@@ -37,7 +37,7 @@ class MeetingActionItemListCreateView(APIView):
             ActionItem.objects
             .filter(meeting=meeting)
             .select_related('assigned_to', 'created_by', 'meeting')
-            .order_by('created_at')
+            .order_by('-created_at')
         )
 
         paginator = StandardPagination()
@@ -123,7 +123,7 @@ class ActionItemDetailView(APIView):
 
         serializer.save()
 
-        if serializer.validated_data.get('status') == 'done':
+        if serializer.validated_data.get('status') == ActionItem.Status.COMPLETED:
             workspace_id = (
                 str(request.organisation.id)
                 if request.organisation
@@ -167,7 +167,7 @@ class ActionItemCrossView(APIView):
                 created_by=request.user,
             )
 
-        qs = qs.select_related('meeting', 'assigned_to', 'created_by')
+        qs = qs.select_related('meeting', 'assigned_to', 'created_by').order_by('-created_at')
 
         if status_filter in ActionItem.Status.values:
             qs = qs.filter(status=status_filter)
