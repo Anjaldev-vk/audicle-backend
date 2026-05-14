@@ -118,7 +118,7 @@ class ChatSessionListCreateView(APIView):
 
     def post(self, request):
         # ── Plan limit check ──────────────────────────────────
-        limit_error = check_rag_access(request.user)
+        limit_error = check_rag_access(request)
         if limit_error:
             return limit_error
         # ── End limit check ───────────────────────────────────
@@ -203,7 +203,7 @@ class ChatMessageCreateView(APIView):
 
     def post(self, request, session_id):
         # ── Plan limit check ──────────────────────────────────
-        limit_error = check_rag_access(request.user)
+        limit_error = check_rag_access(request)
         if limit_error:
             return limit_error
         # ── End limit check ───────────────────────────────────

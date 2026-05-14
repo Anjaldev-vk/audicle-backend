@@ -25,3 +25,4 @@ class BotStatusSerializer(serializers.Serializer):
     status        = serializers.ChoiceField(choices=VALID_STATUSES)
     error_message = serializers.CharField(required=False, allow_blank=True, default="")
     audio_s3_key  = serializers.CharField(required=False, allow_blank=True, default="")
+    recall_bot_id = serializers.CharField(required=False, allow_blank=True, default="")

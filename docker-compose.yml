@@ -78,6 +78,7 @@ services:
       - GEMINI_MODEL=${GEMINI_MODEL}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENAI_MODEL=${OPENAI_MODEL}
+      - RECALL_WEBHOOK_SECRET=${RECALL_WEBHOOK_SECRET}
     depends_on:
       db:
         condition: service_healthy
@@ -100,6 +101,7 @@ services:
       - .env
     environment:
       - DEBUG=True
+      - RECALL_WEBHOOK_SECRET=${RECALL_WEBHOOK_SECRET}
     depends_on:
       db:
         condition: service_healthy
@@ -121,6 +123,7 @@ services:
       - .env
     environment:
       - DEBUG=True
+      - RECALL_WEBHOOK_SECRET=${RECALL_WEBHOOK_SECRET}
     depends_on:
       db:
         condition: service_healthy
@@ -202,6 +205,26 @@ services:
       - "9092:9092"
     networks:
       - audicle_network
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics --bootstrap-server localhost:9092 --list"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  kafka-setup:
+    image: confluentinc/cp-kafka:7.6.0
+    container_name: audicle_kafka_setup
+    depends_on:
+      kafka:
+        condition: service_healthy
+    command: >
+      bash -c "kafka-topics --create --if-not-exists --bootstrap-server kafka:29092 --partitions 1 --replication-factor 1 --topic bot_tasks &&
+               kafka-topics --create --if-not-exists --bootstrap-server kafka:29092 --partitions 1 --replication-factor 1 --topic transcription_tasks &&
+               kafka-topics --create --if-not-exists --bootstrap-server kafka:29092 --partitions 1 --replication-factor 1 --topic summarization_tasks &&
+               kafka-topics --create --if-not-exists --bootstrap-server kafka:29092 --partitions 1 --replication-factor 1 --topic embedding_tasks"
+    networks:
+      - audicle_network
 
   # Bot Service — Playwright + ffmpeg meeting recorder (Phase 9)
   bot_service:
@@ -211,18 +234,19 @@ services:
     container_name: audicle_botservice
     shm_size: '2gb'
     depends_on:
-      - kafka
-      - backend
+      kafka:
+        condition: service_healthy
+      kafka-setup:
+        condition: service_completed_successfully
+      backend:
+        condition: service_started
     environment:
       - KAFKA_BROKER=kafka:29092
       - KAFKA_GROUP=bot-service-group
       - BOT_TOPIC=bot_tasks
       - DJANGO_INTERNAL_URL=http://backend:8000
       - INTERNAL_API_SECRET=${INTERNAL_API_SECRET}
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-      - AWS_STORAGE_BUCKET_NAME=${AWS_STORAGE_BUCKET_NAME}
-      - AWS_S3_REGION=${AWS_S3_REGION}
+      - RECALL_API_KEY=${RECALL_API_KEY}
     networks:
       - audicle_network
 

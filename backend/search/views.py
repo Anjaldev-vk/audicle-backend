@@ -13,6 +13,8 @@ from rest_framework.views import APIView
 from meetings.models import Meeting
 from transcripts.models import MeetingSummary, Transcript
 from utils.response import error_response, success_response
+from utils.pagination import StandardPagination
+
 
 logger = logging.getLogger("search")
 
@@ -33,6 +35,8 @@ class MeetingSearchView(APIView):
     """
 
     permission_classes = [IsAuthenticated]
+    pagination_class = StandardPagination
+
 
     def get(self, request):
         query = request.query_params.get("q", "").strip()
@@ -88,16 +92,18 @@ class MeetingSearchView(APIView):
             len(results),
         )
 
-        return success_response(
-            message=f"Found {len(results)} result(s) for '{query}'.",
-            data={
-                "query": query,
-                "type": result_type,
-                "total": len(results),
-                "results": results,
-            },
-            status_code=status.HTTP_200_OK,
-        )
+        paginator = self.pagination_class()
+        page = paginator.paginate_queryset(results, request)
+        
+        response = paginator.get_paginated_response(page)
+        # Add search metadata to the 'data' envelope to maintain test compatibility
+        response.data['data']['query'] = query
+        response.data['data']['type'] = result_type
+        response.data['data']['total'] = len(results)
+        
+        return response
+
+
 
     # ── Private search methods ────────────────────────────────────────────
 

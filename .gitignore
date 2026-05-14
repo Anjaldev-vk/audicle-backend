@@ -23,6 +23,14 @@ postgres_data/
 .pytest_cache/
 .coverage
 htmlcov/
+test_out.txt
+
+# Scratch scripts
+backend/scratch/
+
+# Bot browser session data
+bot_service/auth/session/*
+!bot_service/auth/session/.gitkeep
 
 # logs
 backend/logs/

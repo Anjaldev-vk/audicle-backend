@@ -74,12 +74,40 @@ class WorkspaceMiddleware:
     def __init__(self, get_response):
         self.get_response = get_response
 
+    @staticmethod
+    def _workspace_error(message, code, status_code):
+        from django.http import JsonResponse
+        return JsonResponse(
+            {
+                "success": False,
+                "status": "error",
+                "code": code,
+                "message": message,
+                "errors": {},
+            },
+            status=status_code,
+        )
+
     def __call__(self, request):
+        # Exempt authentication and public endpoints from workspace checks
+        exempt_paths = [
+            '/api/v1/accounts/login/',
+            '/api/v1/accounts/register/',
+            '/api/v1/accounts/password-reset/',
+            '/api/v1/accounts/token/refresh/',
+            '/api/v1/accounts/invite/',
+            '/api/v1/accounts/mfa/',
+            '/api/v1/accounts/verify/',
+        ]
+        
+        if any(request.path.startswith(path) for path in exempt_paths):
+            return self.get_response(request)
+
         request.organisation = None
         request.membership = None
         request.workspace_type = 'personal'
 
-        # 1. Resolve User (Django session or JWT or force_authenticate)
+        # 1. Resolve User
         user = getattr(request, 'user', None)
         
         # Support for DRF force_authenticate in tests
@@ -105,31 +133,46 @@ class WorkspaceMiddleware:
             
             if workspace_id and workspace_id != 'personal':
                 try:
-                    from accounts.models import Membership
-                    # Ensure we have a valid UUID before querying to avoid silent ValueError swallow
+                    # Ensure we have a valid UUID before querying
                     try:
                         val = uuid.UUID(str(workspace_id))
                     except ValueError:
                         logger.warning("[workspace] Invalid UUID format: %s", workspace_id)
-                        return self.get_response(request)
+                        return self._workspace_error(
+                            message="Invalid workspace ID",
+                            code="invalid_workspace",
+                            status_code=403,
+                        )
 
-                    membership = Membership.objects.select_related(
-                        'organisation'
-                    ).get(
-                        user=user,
-                        organisation_id=val
-                    )
-                    request.organisation = membership.organisation
-                    request.membership = membership
-                    request.workspace_type = 'organisation'
+                    try:
+                        from accounts.models import Membership
+                        membership = Membership.objects.select_related(
+                            'organisation'
+                        ).get(
+                            user=user,
+                            organisation_id=val
+                        )
+                        request.organisation = membership.organisation
+                        request.membership = membership
+                        request.workspace_type = 'organisation'
+                    except Membership.DoesNotExist:
+                        logger.warning(
+                            "[workspace] Unauthorized access attempt to workspace %s by user %s",
+                            workspace_id, user.email
+                        )
+                        return self._workspace_error(
+                            message="Unauthorized workspace access",
+                            code="unauthorized_workspace",
+                            status_code=403,
+                        )
                 except Exception as e:
-                    # Log the failure so we can debug why isolation might fail
-                    logger.warning(
-                        "[workspace] Failed to resolve workspace %s for user %s: %s",
-                        workspace_id, user.email, str(e)
+                    logger.error("[workspace] Critical error resolving workspace %s: %s", workspace_id, str(e))
+                    return self._workspace_error(
+                        message="Error resolving workspace",
+                        code="workspace_resolution_error",
+                        status_code=500,
                     )
-                    # If an ID was provided but lookup failed, we ensure organisation remains None
-                    # so the user sees their Personal meetings OR an empty list depending on the view.
-                    pass
+
+
 
         return self.get_response(request)

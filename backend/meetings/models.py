@@ -78,6 +78,12 @@ class Meeting(models.Model):
         blank=True,
         help_text="Google Calendar event ID — used to prevent duplicate imports",
     )
+    recall_bot_id = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        help_text="Recall.ai bot ID for tracking",
+    )
 
     # Auto timestamps
     created_at = models.DateTimeField(auto_now_add=True)
@@ -167,7 +173,7 @@ class MeetingParticipant(models.Model):
         verbose_name_plural = "Meeting Participants"
 
     def __str__(self):
-        return f"{self.name} — {self.meeting.title} ({self.get_role_display()})"
+        return f"{self.name} - {self.meeting.title} ({self.get_role_display()})"
 
 
 class MeetingTemplate(models.Model):

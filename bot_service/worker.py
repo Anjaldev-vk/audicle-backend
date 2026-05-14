@@ -3,6 +3,9 @@ import logging
 import os
 import threading
 from confluent_kafka import Consumer, KafkaError
+from dotenv import load_dotenv
+
+load_dotenv()
 
 from bot_runner import BotRunner
 

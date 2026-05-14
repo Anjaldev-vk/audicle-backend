@@ -1,5 +1,11 @@
 import json
 import logging
+import hashlib
+import hmac
+import os
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_POST
 
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
@@ -21,7 +27,8 @@ from meetings.utils import get_meeting_or_404, TenantQuerysetMixin
 from utils.response import success_response, error_response
 from utils.pagination import StandardPagination
 from analytics.tasks import track_meeting_created, track_meeting_completed, track_bot_joined
-from utils.plan_limits import check_bot_access, check_meeting_limit, check_org_meeting_limit
+from utils.plan_limits import check_bot_access, check_meeting_limit
+from notifications.service import send_notification
 
 logger = logging.getLogger("meetings")
 
@@ -50,11 +57,7 @@ class MeetingListCreateView(APIView, TenantQuerysetMixin):
 
     def post(self, request):
         # ── Plan limit check ──────────────────────────────────
-        if request.organisation:
-            limit_error = check_org_meeting_limit(request.organisation)
-        else:
-            limit_error = check_meeting_limit(request.user)
-
+        limit_error = check_meeting_limit(request)
         if limit_error:
             return limit_error
         # ── End limit check ───────────────────────────────────
@@ -184,7 +187,7 @@ class BotDispatchView(APIView, TenantQuerysetMixin):
 
     def post(self, request, meeting_id):
         # ── Plan limit check ──────────────────────────────────
-        limit_error = check_bot_access(request.user)
+        limit_error = check_bot_access(request)
         if limit_error:
             return limit_error
         # ── End limit check ───────────────────────────────────
@@ -247,7 +250,7 @@ class BotDispatchView(APIView, TenantQuerysetMixin):
 
         # Update status
         meeting.status = Meeting.Status.BOT_JOINING
-        meeting.save(update_fields=["status"])
+        meeting.save(update_fields=["status", "updated_at"])
 
         return success_response(
             message="Bot dispatched successfully. It will join the meeting shortly.",
@@ -372,6 +375,7 @@ class MeetingParticipantDeleteView(APIView, TenantQuerysetMixin):
 class MeetingTemplateListCreateView(APIView):
     """GET + POST /api/v1/meetings/templates/"""
     permission_classes = [IsAuthenticated]
+    pagination_class = StandardPagination
 
     def get(self, request):
         if request.organisation:
@@ -384,8 +388,12 @@ class MeetingTemplateListCreateView(APIView):
                 created_by=request.user,
             )
         qs = qs.select_related('created_by').order_by('name')
-        serializer = MeetingTemplateSerializer(qs, many=True)
-        return success_response(data=serializer.data, message='Templates fetched')
+
+        paginator = self.pagination_class()
+        page = paginator.paginate_queryset(qs, request)
+        serializer = MeetingTemplateSerializer(page, many=True)
+        return paginator.get_paginated_response(serializer.data)
+
 
     def post(self, request):
         serializer = MeetingTemplateSerializer(data=request.data)
@@ -435,3 +443,88 @@ class MeetingTemplateDeleteView(APIView):
             'Meeting template %s deleted by user %s', template_id, request.user.id
         )
         return success_response(message='Template deleted')
+
+
+# ------------ Recall.ai Webhook ----------------------------------------------------
+
+@csrf_exempt
+@require_POST
+def recall_webhook(request):
+    """
+    Endpoint for Recall.ai to push bot status updates.
+    """
+    RECALL_WEBHOOK_SECRET = os.environ.get('RECALL_WEBHOOK_SECRET')
+    
+    # 1. Verify it's really from Recall.ai
+    if RECALL_WEBHOOK_SECRET:
+        signature = request.headers.get('X-Recall-Signature', '')
+        expected = hmac.new(
+            RECALL_WEBHOOK_SECRET.encode(),
+            request.body,
+            hashlib.sha256,
+        ).hexdigest()
+
+        if not hmac.compare_digest(signature, expected):
+            logger.warning("Recall Webhook: Invalid signature")
+            return JsonResponse({'error': 'Invalid signature'}, status=401)
+
+    # 2. Parse event
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON'}, status=400)
+        
+    event = data.get('event')
+    bot_data = data.get('data', {})
+    bot_id = bot_data.get('bot_id')
+
+    if not bot_id:
+        return JsonResponse({'error': 'No bot_id provided'}, status=400)
+
+    # 3. Handle status changes
+    if event == 'bot.status_change':
+        status = bot_data.get('status', {}).get('code')
+        _handle_status_change(bot_id, status)
+
+    return JsonResponse({'ok': True})
+
+
+def _handle_status_change(bot_id: str, status: str):
+    meeting = Meeting.objects.filter(recall_bot_id=bot_id).first()
+    if not meeting:
+        logger.warning("_handle_status_change: No meeting found for recall_bot_id %s", bot_id)
+        return
+
+    # Map Recall status → your Meeting status
+    status_map = {
+        'in_call_recording': Meeting.Status.RECORDING,
+        'call_ended':        Meeting.Status.PROCESSING,
+        'done':              Meeting.Status.COMPLETED,
+        'fatal':             Meeting.Status.FAILED,
+        'kicked':            Meeting.Status.FAILED,
+        'waiting_room_timeout': Meeting.Status.FAILED,
+    }
+
+    mapped = status_map.get(status)
+    if not mapped:
+        return
+
+    meeting.status = mapped
+    meeting.save()
+    
+    logger.info("Recall Webhook: Meeting %s status updated to %s (bot %s)", meeting.id, mapped, bot_id)
+
+    # Trigger audio download when call ends
+    if mapped == Meeting.Status.PROCESSING:
+        from meetings.tasks import download_and_upload_audio
+        download_and_upload_audio.delay(bot_id, str(meeting.id))
+        
+        send_notification(
+            user_id=str(meeting.created_by.id),
+            notification_type='MEETING_COMPLETED',
+            payload={
+                'meeting_id': str(meeting.id),
+                'title': meeting.title,
+                'message': f'Your meeting "{meeting.title}" has ended. Transcription is starting.',
+            }
+        )

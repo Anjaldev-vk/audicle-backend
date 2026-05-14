@@ -123,24 +123,24 @@ class TestMFAUtils:
 class TestEnableMFA:
 
     def test_enable_returns_totp_uri(self, auth_client):
-        response = auth_client.post(reverse("mfa-enable", kwargs={"version": "v1"}))
+        response = auth_client.post(reverse("mfa-enable"))
         assert response.status_code == 200
         assert "totp_uri" in response.json()["data"]
 
     def test_enable_stores_secret(self, auth_client, user):
-        auth_client.post(reverse("mfa-enable", kwargs={"version": "v1"}))
+        auth_client.post(reverse("mfa-enable"))
         user.refresh_from_db()
         assert user.mfa_secret is not None
 
     def test_enable_twice_returns_400(self, auth_client, user):
         user.mfa_enabled = True
         user.save()
-        response = auth_client.post(reverse("mfa-enable", kwargs={"version": "v1"}))
+        response = auth_client.post(reverse("mfa-enable"))
         assert response.status_code == 400
         assert response.json()["code"] == "mfa_already_enabled"
 
     def test_enable_requires_auth(self, client):
-        response = client.post(reverse("mfa-enable", kwargs={"version": "v1"}))
+        response = client.post(reverse("mfa-enable"))
         assert response.status_code == 401
 
 
@@ -157,7 +157,7 @@ class TestVerifyMFASetup:
 
         code     = pyotp.TOTP(secret).now()
         response = auth_client.post(
-            reverse("mfa-verify-setup", kwargs={"version": "v1"}),
+            reverse("mfa-verify-setup"),
             {"totp_code": code},
             format="json",
         )
@@ -169,7 +169,7 @@ class TestVerifyMFASetup:
         user.mfa_secret = generate_mfa_secret()
         user.save()
         response = auth_client.post(
-            reverse("mfa-verify-setup", kwargs={"version": "v1"}),
+            reverse("mfa-verify-setup"),
             {"totp_code": "000000"},
             format="json",
         )
@@ -178,7 +178,7 @@ class TestVerifyMFASetup:
 
     def test_no_secret_returns_400(self, auth_client):
         response = auth_client.post(
-            reverse("mfa-verify-setup", kwargs={"version": "v1"}),
+            reverse("mfa-verify-setup"),
             {"totp_code": "123456"},
             format="json",
         )
@@ -196,7 +196,7 @@ class TestMFATokenVerify:
         mfa_token = generate_mfa_token(str(mfa_user.id))
         code      = pyotp.TOTP(mfa_user.mfa_secret).now()
         response  = client.post(
-            reverse("mfa-verify", kwargs={"version": "v1"}),
+            reverse("mfa-verify"),
             {"mfa_token": mfa_token, "totp_code": code},
             format="json",
         )
@@ -205,7 +205,7 @@ class TestMFATokenVerify:
 
     def test_invalid_mfa_token_returns_401(self, client):
         response = client.post(
-            reverse("mfa-verify", kwargs={"version": "v1"}),
+            reverse("mfa-verify"),
             {"mfa_token": "bad.token", "totp_code": "123456"},
             format="json",
         )
@@ -215,7 +215,7 @@ class TestMFATokenVerify:
     def test_wrong_totp_code_returns_401(self, client, mfa_user):
         mfa_token = generate_mfa_token(str(mfa_user.id))
         response  = client.post(
-            reverse("mfa-verify", kwargs={"version": "v1"}),
+            reverse("mfa-verify"),
             {"mfa_token": mfa_token, "totp_code": "000000"},
             format="json",
         )
@@ -231,7 +231,7 @@ class TestMFARecovery:
     def test_recovery_request_queues_email(self, client, mfa_user):
         mfa_token = generate_mfa_token(str(mfa_user.id))
         response  = client.post(
-            reverse("mfa-recover-request", kwargs={"version": "v1"}),
+            reverse("mfa-recover-request"),
             {"mfa_token": mfa_token},
             format="json",
         )
@@ -243,7 +243,7 @@ class TestMFARecovery:
 
         mfa_token = generate_mfa_token(str(mfa_user.id))
         response  = client.post(
-            reverse("mfa-recover-request", kwargs={"version": "v1"}),
+            reverse("mfa-recover-request"),
             {"mfa_token": mfa_token},
             format="json",
         )
@@ -256,7 +256,7 @@ class TestMFARecovery:
 
         mfa_token = generate_mfa_token(str(mfa_user.id))
         response  = client.post(
-            reverse("mfa-recover-verify", kwargs={"version": "v1"}),
+            reverse("mfa-recover-verify"),
             {"mfa_token": mfa_token, "email_code": otp},
             format="json",
         )
@@ -271,7 +271,7 @@ class TestMFARecovery:
         store_email_otp(str(mfa_user.id), "123456")
         mfa_token = generate_mfa_token(str(mfa_user.id))
         response  = client.post(
-            reverse("mfa-recover-verify", kwargs={"version": "v1"}),
+            reverse("mfa-recover-verify"),
             {"mfa_token": mfa_token, "email_code": "999999"},
             format="json",
         )
@@ -280,7 +280,7 @@ class TestMFARecovery:
 
     def test_recovery_verify_invalid_mfa_token_returns_401(self, client):
         response = client.post(
-            reverse("mfa-recover-verify", kwargs={"version": "v1"}),
+            reverse("mfa-recover-verify"),
             {"mfa_token": "bad.token", "email_code": "123456"},
             format="json",
         )
@@ -298,7 +298,7 @@ class TestDisableMFA:
         client.force_authenticate(user=mfa_user)
         code     = pyotp.TOTP(mfa_user.mfa_secret).now()
         response = client.post(
-            reverse("mfa-disable", kwargs={"version": "v1"}),
+            reverse("mfa-disable"),
             {"totp_code": code},
             format="json",
         )
@@ -310,7 +310,7 @@ class TestDisableMFA:
     def test_disable_invalid_code_returns_400(self, client, mfa_user):
         client.force_authenticate(user=mfa_user)
         response = client.post(
-            reverse("mfa-disable", kwargs={"version": "v1"}),
+            reverse("mfa-disable"),
             {"totp_code": "000000"},
             format="json",
         )
@@ -319,7 +319,7 @@ class TestDisableMFA:
 
     def test_disable_when_not_enabled_returns_400(self, auth_client):
         response = auth_client.post(
-            reverse("mfa-disable", kwargs={"version": "v1"}),
+            reverse("mfa-disable"),
             {"totp_code": "123456"},
             format="json",
         )
@@ -327,7 +327,7 @@ class TestDisableMFA:
         assert response.json()["code"] == "mfa_not_enabled"
 
     def test_disable_requires_auth(self, client):
-        response = client.post(reverse("mfa-disable", kwargs={"version": "v1"}))
+        response = client.post(reverse("mfa-disable"))
         assert response.status_code == 401
 
 
@@ -338,7 +338,7 @@ class TestLoginMFAIntercept:
 
     def test_login_with_mfa_enabled_returns_mfa_token(self, client, mfa_user):
         response = client.post(
-            reverse("login", kwargs={"version": "v1"}),
+            reverse("login"),
             {"email": mfa_user.email, "password": "StrongPass123!"},
             format="json",
         )
@@ -349,7 +349,7 @@ class TestLoginMFAIntercept:
 
     def test_login_without_mfa_returns_jwt_directly(self, client, user):
         response = client.post(
-            reverse("login", kwargs={"version": "v1"}),
+            reverse("login"),
             {"email": user.email, "password": "StrongPass123!"},
             format="json",
         )

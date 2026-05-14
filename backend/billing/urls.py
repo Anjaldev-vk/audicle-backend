@@ -5,6 +5,7 @@ from .views import (
     BillingUsageView,
     BillingCancelView,
     BillingWebhookView,
+    BillingVerifyView,
 )
 
 urlpatterns = [
@@ -13,4 +14,5 @@ urlpatterns = [
     path("usage/", BillingUsageView.as_view(), name="billing-usage"),
     path("cancel/", BillingCancelView.as_view(), name="billing-cancel"),
     path("webhook/", BillingWebhookView.as_view(), name="billing-webhook"),
+    path("verify/", BillingVerifyView.as_view(), name="billing-verify"),
 ]

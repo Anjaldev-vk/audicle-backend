@@ -584,14 +584,30 @@ class RemoveMemberView(APIView):
     }}}
 )
 class InviteMemberView(APIView):
-    permission_classes = [IsAuthenticated, IsOrgAdmin]
+    permission_classes = [IsAuthenticated]
 
     def post(self, request, *args, **kwargs):
-        # ── Plan limit check ──────────────────────────────────
+        # 1. Permission check first (admin only)
+        if not request.membership or request.membership.role not in ['owner', 'admin']:
+            return error_response(
+                message="Only admins can invite members.",
+                code="permission_denied",
+                status_code=403,
+            )
+
+        # 2. Check if already a member
+        email = request.data.get('email')
+        if Membership.objects.filter(organisation=request.organisation, user__email=email).exists():
+            return error_response(
+                message="User is already a member.",
+                code="already_member",
+                status_code=400,
+            )
+
+        # 3. Plan limit check
         limit_error = check_member_limit(request.organisation)
         if limit_error:
             return limit_error
-        # ── End limit check ───────────────────────────────────
 
         serializer = CreateOrganisationInviteSerializer(
             data=request.data, context={'request': request}

@@ -304,3 +304,30 @@ class TestAutoDispatchBotsTask:
         result = auto_dispatch_bots_task()
         assert result["dispatched"] == 0
         mock_send.assert_not_called()
+
+    @patch("utils.kafka_producer.send_bot_task", return_value=True)
+    def test_marks_stale_bot_joining_meetings_failed(self, mock_send, settings, org_admin, organisation):
+        """Task fails bot_joining meetings that never progressed to recording."""
+        from meetings.tasks import auto_dispatch_bots_task
+
+        settings.BOT_JOINING_TIMEOUT_MINUTES = 10
+        meeting = Meeting.objects.create(
+            title        = "Stale Bot Join",
+            platform     = Meeting.Platform.GOOGLE_MEET,
+            status       = Meeting.Status.BOT_JOINING,
+            meeting_url  = "https://meet.google.com/aaa-bbbb-ccc",
+            created_by   = org_admin,
+            organisation = organisation,
+            scheduled_at = timezone.now() - timedelta(minutes=30),
+        )
+        Meeting.objects.filter(id=meeting.id).update(
+            updated_at=timezone.now() - timedelta(minutes=11),
+        )
+
+        result = auto_dispatch_bots_task()
+
+        assert result["stale_failed"] == 1
+        mock_send.assert_not_called()
+
+        meeting.refresh_from_db()
+        assert meeting.status == Meeting.Status.FAILED

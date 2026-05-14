@@ -1,6 +1,6 @@
 from django.db.models.signals import post_save
 from django.dispatch import Signal, receiver
-from .models import User
+from .models import User, Organisation
 
 password_reset_requested = Signal()
 
@@ -80,3 +80,37 @@ def on_membership_delete(sender, instance, **kwargs):
         instance.user_id,
         instance.organisation_id
     )
+
+
+# ------------------ Subscription Assignment ------------------
+
+@receiver(post_save, sender=User)
+def assign_free_plan_to_user(sender, instance, created, **kwargs):
+    if created:
+        from billing.models import Plan, Subscription
+        free_plan = Plan.objects.filter(name='Free').first()
+        if free_plan:
+            try:
+                Subscription.objects.get(user=instance)
+            except Subscription.DoesNotExist:
+                Subscription.objects.create(
+                    user=instance,
+                    plan=free_plan,
+                    status='active',
+                )
+
+
+@receiver(post_save, sender=Organisation)
+def assign_free_plan_to_org(sender, instance, created, **kwargs):
+    if created:
+        from billing.models import Plan, Subscription
+        free_plan = Plan.objects.filter(name='Free').first()
+        if free_plan:
+            try:
+                Subscription.objects.get(organisation=instance)
+            except Subscription.DoesNotExist:
+                Subscription.objects.create(
+                    organisation=instance,
+                    plan=free_plan,
+                    status='active',
+                )

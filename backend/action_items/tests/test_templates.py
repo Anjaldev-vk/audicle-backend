@@ -41,7 +41,8 @@ def test_list_templates(auth_client, user):
     )
     res = auth_client.get('/api/v1/meetings/templates/')
     assert res.status_code == 200
-    assert len(res.json()['data']) == 1
+    assert len(res.json()['data']['results']) == 1
+
 
 
 def test_delete_template(auth_client, user):

@@ -47,6 +47,7 @@ class BotStatusView(APIView):
         new_status    = data["status"]
         error_message = data.get("error_message", "")
         audio_s3_key  = data.get("audio_s3_key", "")
+        recall_bot_id = data.get("recall_bot_id", "")
 
         # ── 3. Fetch meeting ──────────────────────────────────────────────────
         try:
@@ -63,6 +64,10 @@ class BotStatusView(APIView):
 
         # ── 4. Handle each status ─────────────────────────────────────────────
         update_fields = ["status", "updated_at"]
+
+        if recall_bot_id:
+            meeting.recall_bot_id = recall_bot_id
+            update_fields.append("recall_bot_id")
 
         if new_status == Meeting.Status.BOT_JOINING:
             meeting.status = Meeting.Status.BOT_JOINING

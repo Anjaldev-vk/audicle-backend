@@ -1,13 +1,15 @@
 import json
 import logging
+import os
 from confluent_kafka import Producer
 from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
 # Kafka configuration
+KAFKA_BROKER = os.environ.get('KAFKA_BROKER', 'kafka:29092')
 KAFKA_CONFIG = {
-    'bootstrap.servers': 'kafka:29092',
+    'bootstrap.servers': KAFKA_BROKER,
     'client.id': 'django-backend'
 }
 
@@ -59,7 +61,7 @@ def send_transcription_task(meeting_id, file_path, user_id):
             value=json.dumps(task_data).encode('utf-8'),
             callback=delivery_report,
         )
-        p.flush()
+        p.flush(timeout=5.0)
         return True
     except Exception as e:
         logger.error('Error sending transcription task to Kafka: %s', e)
@@ -82,7 +84,7 @@ def send_summarization_task(meeting_id: str, transcript_text: str) -> None:
             value    = json.dumps(message).encode("utf-8"),
             callback = delivery_report,
         )
-        p.flush()
+        p.flush(timeout=5.0)
         logger.info("Summarization task sent for meeting %s", meeting_id)
     except Exception as e:
         logger.error("Error sending summarization task: %s", e)
@@ -111,7 +113,7 @@ def send_bot_task(
             value    = json.dumps(message).encode("utf-8"),
             callback = delivery_report,
         )
-        p.flush()
+        p.flush(timeout=5.0)
         logger.info("Bot task sent for meeting %s", meeting_id)
         return True
     except Exception as exc:
@@ -140,7 +142,7 @@ def send_embedding_task(
             value    = json.dumps(message).encode("utf-8"),
             callback = delivery_report,
         )
-        p.flush()
+        p.flush(timeout=5.0)
         logger.info("Embedding task sent for transcript %s", transcript_id)
     except Exception as e:
         logger.error("Error sending embedding task: %s", e)

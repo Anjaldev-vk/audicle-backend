@@ -58,6 +58,17 @@ def failed_transcript(db, meeting, org_admin, organisation):
     )
 
 
+# ── URL Helpers ──────────────────────────────────────────────────────────────
+def _transcript_url(meeting_id):
+    return f"/api/v1/meetings/{meeting_id}/transcript/"
+
+def _segments_url(meeting_id):
+    return f"/api/v1/meetings/{meeting_id}/transcript/segments/"
+
+def _retry_url(meeting_id):
+    return f"/api/v1/meetings/{meeting_id}/transcript/retry/"
+
+
 # ── Transcript model tests ────────────────────────────────────────────────────
 
 @pytest.mark.django_db
@@ -94,12 +105,7 @@ class TestGetTranscript:
     def test_owner_can_get_transcript(
         self, org_admin_client, completed_transcript
     ):
-        response = org_admin_client.get(
-            reverse(
-                "transcripts:transcript-detail",
-                args=[completed_transcript.meeting.id],
-            )
-        )
+        response = org_admin_client.get(_transcript_url(completed_transcript.meeting.id))
         assert response.status_code == 200
         data = response.json()["data"]
         assert data["status"] == "completed"
@@ -114,21 +120,11 @@ class TestGetTranscript:
         refresh = RefreshToken.for_user(individual_user)
         api_client.credentials(HTTP_AUTHORIZATION=f'Bearer {refresh.access_token}')
         
-        response = api_client.get(
-            reverse(
-                "transcripts:transcript-detail",
-                args=[completed_transcript.meeting.id],
-            )
-        )
+        response = api_client.get(_transcript_url(completed_transcript.meeting.id))
         assert response.status_code == 404
 
     def test_unauthenticated_returns_401(self, api_client, completed_transcript):
-        response = api_client.get(
-            reverse(
-                "transcripts:transcript-detail",
-                args=[completed_transcript.meeting.id],
-            )
-        )
+        response = api_client.get(_transcript_url(completed_transcript.meeting.id))
         assert response.status_code == 401
 
 
@@ -140,12 +136,7 @@ class TestGetSegments:
     def test_returns_segments_in_order(
         self, org_admin_client, completed_transcript
     ):
-        response = org_admin_client.get(
-            reverse(
-                "transcripts:transcript-segments",
-                args=[completed_transcript.meeting.id],
-            )
-        )
+        response = org_admin_client.get(_segments_url(completed_transcript.meeting.id))
         assert response.status_code == 200
         results = response.json()["data"].get("results", response.json()["data"])
         times = [s['start_seconds'] for s in results]
@@ -160,12 +151,7 @@ class TestDeleteTranscript:
     def test_owner_can_delete_transcript(
         self, org_admin_client, completed_transcript
     ):
-        response = org_admin_client.delete(
-            reverse(
-                "transcripts:transcript-detail",
-                args=[completed_transcript.meeting.id],
-            )
-        )
+        response = org_admin_client.delete(_transcript_url(completed_transcript.meeting.id))
         assert response.status_code == 200
         assert not Transcript.objects.filter(
             id=completed_transcript.id
@@ -181,12 +167,7 @@ class TestRetryTranscript:
     def test_retry_failed_transcript(
         self, mock_kafka, org_admin_client, failed_transcript
     ):
-        response = org_admin_client.post(
-            reverse(
-                "transcripts:transcript-retry",
-                args=[failed_transcript.meeting.id],
-            )
-        )
+        response = org_admin_client.post(_retry_url(failed_transcript.meeting.id))
         assert response.status_code == 200
         failed_transcript.refresh_from_db()
         assert failed_transcript.status == Transcript.Status.PENDING
@@ -202,7 +183,7 @@ class TestInternalTranscriptComplete:
     def test_valid_secret_saves_transcript(self, api_client, meeting):
         from django.conf import settings
         response = api_client.post(
-            reverse("transcripts:transcript-complete-internal"),
+            "/api/v1/internal/transcript/complete/",
             {
                 "meeting_id":       str(meeting.id),
                 "status":           "completed",

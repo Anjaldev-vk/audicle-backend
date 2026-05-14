@@ -29,35 +29,19 @@ from rag import urls as rag_urls
 urlpatterns = [
 #---------------------------------- Admin ----------------------------------
     path('admin/', admin.site.urls),
-#---------------------------------- Accounts API ----------------------------------
-    path('api/<str:version>/accounts/', include('accounts.urls')),
-
-#---------------------------------- Meetings API ----------------------------------
-    path('api/v1/meetings/', include('meetings.urls', namespace='meetings')),
-    
-#---------------------------------- Action Items API (Cross-meeting) ----------------
-    path('api/v1/action-items/', include('action_items.urls')),
-
-#---------------------------------- Transcripts API ----------------------------------
-    path("api/v1/", include("transcripts.urls", namespace="transcripts")),
-
-#---------------------------------- RAG API ----------------------------------
-    path('api/v1/rag/', include('rag.urls')),
-
-#---------------------------------- Notifications API ----------------------------------
-    path('api/v1/notifications/', include('notifications.urls')),
-
-#---------------------------------- Search API ----------------------------------
-    path('api/v1/', include('search.urls')),
-
-#---------------------------------- Analytics API ----------------------------------
-    path('api/v1/analytics/', include('analytics.urls')),
-
-#---------------------------------- Calendar API ----------------------------------
-    path("api/v1/", include("calendar_integration.urls")),
-
-#---------------------------------- Billing API ----------------------------------
-    path("api/v1/billing/", include("billing.urls")),
+#---------------------------------- API v1 ----------------------------------
+    path('api/v1/', include([
+        path('accounts/', include('accounts.urls')),
+        path('meetings/', include('meetings.urls', namespace='meetings')),
+        path('action-items/', include('action_items.urls')),
+        path('', include('transcripts.urls')),
+        path('rag/', include('rag.urls')),
+        path('notifications/', include('notifications.urls')),
+        path('', include('search.urls')),
+        path('analytics/', include('analytics.urls')),
+        path('', include('calendar_integration.urls')),
+        path('billing/', include('billing.urls')),
+    ])),
 
 #------------------------------------ internal  ------------------------------------
     path('internal/', include(rag_urls.internal_urlpatterns)),

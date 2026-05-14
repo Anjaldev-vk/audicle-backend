@@ -1,10 +1,38 @@
 import pytest
+import os
 from django.db import connection
 from rest_framework.test import APIClient
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from datetime import timedelta
 from unittest.mock import patch, MagicMock
+
+# Force local host for external services during tests running on Windows
+os.environ.setdefault('DB_HOST', 'localhost')
+os.environ.setdefault('DB_PORT', '5432')
+os.environ.setdefault('REDIS_HOST', 'localhost')
+os.environ.setdefault('REDIS_URL', 'redis://localhost:6379/0')
+os.environ.setdefault('REDIS_CACHE_URL', 'redis://localhost:6379/1')
+os.environ.setdefault('CELERY_RESULT_BACKEND', 'redis://localhost:6379/2')
+
+# Mock pgvector VectorField for local tests without the extension
+import pgvector.django
+from django.db import models
+
+class MockVectorField(models.Field):
+    def __init__(self, dimensions=None, *args, **kwargs):
+        self.dimensions = dimensions
+        super().__init__(*args, **kwargs)
+    def db_type(self, connection):
+        return 'float8[]'
+    def from_db_value(self, value, expression, connection):
+        return value
+    def to_python(self, value):
+        return value
+    def get_prep_value(self, value):
+        return value
+
+pgvector.django.VectorField = MockVectorField
 
 
 def get_results(response):
@@ -26,6 +54,45 @@ def mock_kafka(settings):
         yield mock_p
 
 
+@pytest.fixture(autouse=True)
+def mock_celery(settings):
+    """
+    Auto-applied to every test.
+    Prevents real Celery/Redis connections during testing.
+    """
+    settings.CELERY_TASK_ALWAYS_EAGER = True
+    settings.CELERY_TASK_EAGER_PROPAGATES = True
+    settings.CELERY_BROKER_URL = 'memory://'
+    settings.CELERY_RESULT_BACKEND = 'cache+memory://'
+
+
+@pytest.fixture(autouse=True)
+def setup_plans(db):
+    """Ensure default plans exist in the database for all tests."""
+    from billing.models import Plan
+    Plan.objects.get_or_create(
+        name='Free',
+        defaults={
+            'meeting_limit': 5,
+            'max_workspaces': 2,
+            'max_members': 2,
+            'bot_access': False,
+            'rag_access': False,
+        }
+    )
+    Plan.objects.get_or_create(
+        name='Pro',
+        defaults={
+            'meeting_limit': 50,
+            'max_workspaces': 5,
+            'max_members': 10,
+            'bot_access': True,
+            'rag_access': True,
+            'razorpay_plan_id': 'plan_pro_123',
+        }
+    )
+
+
 # ── anyio backend — required for @pytest.mark.anyio WebSocket tests ──────────
 @pytest.fixture(scope='session')
 def anyio_backend():
@@ -43,7 +110,11 @@ def enable_pgvector(django_db_blocker):
     """
     with django_db_blocker.unblock():
         with connection.cursor() as cursor:
-            cursor.execute('CREATE EXTENSION IF NOT EXISTS vector;')
+            try:
+                cursor.execute('CREATE EXTENSION IF NOT EXISTS vector;')
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning("Could not create pgvector extension: %s", e)
 
 
 # ── Global Test Settings ──────────────────────────────────────────────────────
@@ -99,26 +170,22 @@ def auth_client(individual_user):
 
 
 @pytest.fixture
-def org_admin_client(org_admin, organisation):
-    """Authenticated client for org admin with workspace context."""
-    from rest_framework_simplejwt.tokens import RefreshToken
+def org_admin_client(org_admin, organisation, org_admin_membership, org_subscription):
+    """Authenticated client for org admin with workspace context and active subscription."""
     client = APIClient()
-    refresh = RefreshToken.for_user(org_admin)
+    client.force_authenticate(user=org_admin)
     client.credentials(
-        HTTP_AUTHORIZATION=f'Bearer {refresh.access_token}',
         HTTP_X_WORKSPACE_ID=str(organisation.id)
     )
     return client
 
 
 @pytest.fixture
-def org_member_client(org_member, organisation):
-    """Authenticated client for org member with workspace context."""
-    from rest_framework_simplejwt.tokens import RefreshToken
+def org_member_client(org_member, organisation, org_member_membership, org_subscription):
+    """Authenticated client for org member with workspace context and active subscription."""
     client = APIClient()
-    refresh = RefreshToken.for_user(org_member)
+    client.force_authenticate(user=org_member)
     client.credentials(
-        HTTP_AUTHORIZATION=f'Bearer {refresh.access_token}',
         HTTP_X_WORKSPACE_ID=str(organisation.id)
     )
     return client
@@ -148,7 +215,7 @@ def organisation(db):
 
 
 @pytest.fixture
-def org_admin(db, organisation):
+def org_admin(db, organisation, org_subscription):  # ← add org_subscription
     from accounts.models import Membership
     User = get_user_model()
     user = User.objects.create_user(
@@ -166,7 +233,17 @@ def org_admin(db, organisation):
 
 
 @pytest.fixture
-def org_member(db, organisation):
+def org_admin_membership(db, org_admin, organisation):
+    from accounts.models import Membership
+    return Membership.objects.get_or_create(
+        user=org_admin,
+        organisation=organisation,
+        defaults={'role': 'owner'}
+    )[0]
+
+
+@pytest.fixture
+def org_member(db, organisation, org_subscription):  # ← add org_subscription
     from accounts.models import Membership
     User = get_user_model()
     user = User.objects.create_user(
@@ -181,6 +258,51 @@ def org_member(db, organisation):
         role='member'
     )
     return user
+
+
+@pytest.fixture
+def org_member_membership(db, org_member, organisation):
+    from accounts.models import Membership
+    return Membership.objects.get_or_create(
+        user=org_member,
+        organisation=organisation,
+        defaults={'role': 'member'}
+    )[0]
+
+
+@pytest.fixture
+def pro_plan(db):
+    from billing.models import Plan
+    return Plan.objects.get_or_create(
+        name='Pro',
+        defaults={
+            'price': 20.00,
+            'meeting_limit': -1,
+            'max_workspaces': -1,
+            'max_members': -1,
+            'bot_access': True,
+            'rag_access': True,
+        }
+    )[0]
+
+
+@pytest.fixture
+def org_subscription(db, organisation):
+    """Give the test organisation a Pro subscription with bot access."""
+    from billing.models import Plan, Subscription
+    pro_plan = Plan.objects.get(name='Pro')
+    try:
+        sub = Subscription.objects.get(organisation=organisation)
+        sub.plan = pro_plan
+        sub.status = 'active'
+        sub.save()
+    except Subscription.DoesNotExist:
+        sub = Subscription.objects.create(
+            organisation=organisation,
+            plan=pro_plan,
+            status='active',
+        )
+    return sub
 
 
 @pytest.fixture

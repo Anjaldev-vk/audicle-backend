@@ -23,7 +23,7 @@ class TestRegisterIndividual:
     Verifies that no organisation is created and security tokens are issued correctly.
     """
     def test_register_individual_success(self, api_client):
-        url = reverse('register', kwargs={'version': 'v1'})
+        url = REGISTER_URL
         data = {
             "email": "newuser@test.com",
             "password": "StrongPassword123!",

@@ -12,7 +12,7 @@ def client():
 class TestRegisterThrottle:
 
     def test_register_blocks_on_6th_request(self, client):
-        url = reverse("register", kwargs={"version": "v1"})
+        url = "/api/v1/accounts/register/"
         payload = {
             "email": "test@example.com",
             "password": "StrongPass123!",
@@ -28,7 +28,7 @@ class TestRegisterThrottle:
             assert response.status_code == 429
 
     def test_register_429_matches_standard_format(self, client):
-        url = reverse("register", kwargs={"version": "v1"})
+        url = "/api/v1/accounts/register/"
         payload = {
             "email": "test@example.com",
             "password": "StrongPass123!",
@@ -55,7 +55,7 @@ class TestRegisterThrottle:
 class TestLoginThrottle:
 
     def test_login_blocks_on_6th_request(self, client):
-        url = reverse("login", kwargs={"version": "v1"})
+        url = "/api/v1/accounts/login/"
         payload = {"email": "any@example.com", "password": "wrong"}
         with patch('rest_framework.throttling.ScopedRateThrottle.get_rate', return_value='5/min'):
             for _ in range(5):
@@ -65,7 +65,7 @@ class TestLoginThrottle:
             assert response.status_code == 429
 
     def test_login_429_has_retry_after_header(self, client):
-        url = reverse("login", kwargs={"version": "v1"})
+        url = "/api/v1/accounts/login/"
         payload = {"email": "any@example.com", "password": "wrong"}
         with patch('rest_framework.throttling.ScopedRateThrottle.get_rate', return_value='5/min'):
             for _ in range(5):
@@ -79,7 +79,7 @@ class TestLoginThrottle:
 class TestPasswordResetThrottle:
 
     def test_password_reset_blocks_on_6th_request(self, client):
-        url = reverse("password_reset_request", kwargs={"version": "v1"})
+        url = "/api/v1/accounts/password-reset/request/"
         payload = {"email": "any@example.com"}
         with patch('rest_framework.throttling.ScopedRateThrottle.get_rate', return_value='5/min'):
             for _ in range(5):
@@ -94,7 +94,7 @@ class TestThrottleIsolation:
 
     def test_different_ips_have_separate_counters(self, client):
         """Two different IPs should not share the same throttle counter."""
-        url = reverse("login", kwargs={"version": "v1"})
+        url = "/api/v1/accounts/login/"
         payload = {"email": "any@example.com", "password": "wrong"}
 
         with patch('rest_framework.throttling.ScopedRateThrottle.get_rate', return_value='5/min'):

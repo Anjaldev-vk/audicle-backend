@@ -44,7 +44,7 @@ class EmbeddingChunk(models.Model):
         ]
 
     def __str__(self):
-        return f"Chunk {self.chunk_index} — {self.meeting}"
+        return f"Chunk {self.chunk_index} - {self.meeting}"
 
 
 class ChatSession(models.Model):
@@ -73,7 +73,7 @@ class ChatSession(models.Model):
         ]
 
     def __str__(self):
-        return f"Session {self.id} — {self.user.email}"
+        return f"Session {self.id} - {self.user.email}"
 
 
 class ChatMessage(models.Model):
@@ -103,4 +103,4 @@ class ChatMessage(models.Model):
         ]
 
     def __str__(self):
-        return f"{self.role} — Session {self.session_id}"
+        return f"{self.role} - Session {self.session_id}"

@@ -40,10 +40,26 @@ if not SECRET_KEY:
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DEBUG') == 'True'
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', 'backend', '0.0.0.0']
+def _env_list(name, default=''):
+    return [
+        item.strip()
+        for item in os.environ.get(name, default).split(',')
+        if item.strip()
+    ]
+
+
+ALLOWED_HOSTS = _env_list(
+    'ALLOWED_HOSTS',
+    'localhost,127.0.0.1,backend,audicle_backend,audicle.in,*' if DEBUG else '',
+)
+if not DEBUG and not ALLOWED_HOSTS:
+    raise ValueError("ALLOWED_HOSTS must be set when DEBUG=False")
 
 # Since we are using Nginx as a proxy, add this:
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+SECURE_SSL_REDIRECT = os.environ.get('SECURE_SSL_REDIRECT', str(not DEBUG)) == 'True'
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
 
 
 # Application definition
@@ -244,11 +260,19 @@ SIMPLE_JWT = {
 CORS_ALLOW_CREDENTIALS = True
 
 # List of frontend URLs allowed to access this API
-CORS_ALLOWED_ORIGINS = os.environ.get('CORS_ALLOWED_ORIGINS', 'http://localhost:5173,http://127.0.0.1:5173').split(',')
+CORS_ALLOWED_ORIGINS = _env_list(
+    'CORS_ALLOWED_ORIGINS',
+    'http://localhost:5173,http://127.0.0.1:5173' if DEBUG else '',
+)
+if not DEBUG and not CORS_ALLOWED_ORIGINS:
+    raise ValueError("CORS_ALLOWED_ORIGINS must be set when DEBUG=False")
 
 # CSRF protection: Ensure cookies are sent safely
 CSRF_COOKIE_HTTPONLY = False  # Set to True only if not using JS to read CSRF token
-CSRF_TRUSTED_ORIGINS = os.environ.get('CORS_ALLOWED_ORIGINS', 'http://localhost:5173,http://127.0.0.1:5173').split(',')
+CSRF_TRUSTED_ORIGINS = _env_list(
+    'CSRF_TRUSTED_ORIGINS',
+    ','.join(CORS_ALLOWED_ORIGINS),
+)
 
 # ------------------ CORS Allowed Headers ------------------
 from corsheaders.defaults import default_headers
@@ -422,7 +446,9 @@ AWS_ALLOWED_UPLOAD_TYPES = {
 AWS_MAX_UPLOAD_SIZE = 500 * 1024 * 1024
 
 # -------------Internal microservice communication-----------------
-INTERNAL_API_SECRET = os.environ.get("INTERNAL_API_SECRET", "change-me-in-production")
+INTERNAL_API_SECRET = os.environ.get("INTERNAL_API_SECRET")
+if not INTERNAL_API_SECRET:
+    raise ValueError("INTERNAL_API_SECRET is not set")
 
 # ------------- AI Backend Configuration -----------------
 AI_BACKEND = os.environ.get("AI_BACKEND", "gemini")
@@ -438,6 +464,14 @@ OLLAMA_MODEL    = os.environ.get("OLLAMA_MODEL", "llama3.2")
 
 SUMMARY_MAX_TOKENS    = 4000
 SUMMARY_CHUNK_OVERLAP = 100
+
+# Bot join attempts that never reach "recording" are treated as failed after
+# this many minutes so meetings do not stay stuck in "bot_joining".
+BOT_JOINING_TIMEOUT_MINUTES = int(os.environ.get("BOT_JOINING_TIMEOUT_MINUTES", "10"))
+BOT_SESSION_PATH = os.getenv(
+    "BOT_SESSION_PATH",
+    "./bot_service/auth/session",
+)
 
 # Channel layer (Redis db=2 to keep separate from broker/cache)
 CHANNEL_LAYERS = {

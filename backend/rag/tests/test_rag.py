@@ -52,6 +52,33 @@ def embedding_chunk(transcript, meeting, organisation, org_admin):
     )
 
 
+@pytest.fixture(autouse=True)
+def upgrade_to_pro(org_admin, organisation, individual_user):
+    """Ensure RAG tests run with a Pro subscription since it's a gated feature."""
+    from billing.models import Plan, Subscription
+    pro_plan = Plan.objects.get(name='Pro')
+    
+    # Upgrade Org Admin
+    Subscription.objects.update_or_create(
+        user=org_admin,
+        defaults={'plan': pro_plan, 'status': 'active'}
+    )
+    
+    # Upgrade Individual User (used by auth_client)
+    Subscription.objects.update_or_create(
+        user=individual_user,
+        defaults={'plan': pro_plan, 'status': 'active'}
+    )
+    
+    # Upgrade Organisation
+    Subscription.objects.update_or_create(
+        organisation=organisation,
+        defaults={'plan': pro_plan, 'status': 'active'}
+    )
+    
+    return True
+
+
 @pytest.fixture
 def chat_session(org_admin, organisation):
     return ChatSession.objects.create(

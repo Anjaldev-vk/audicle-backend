@@ -35,8 +35,19 @@ OPENAI_API_KEY  = os.environ.get("OPENAI_API_KEY")
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://ollama:11434/v1")
 
 # --------------------- Chunk settings ---------------------
-CHUNK_SIZE    = 512   # tokens (approximate — we use words)
+CHUNK_SIZE    = 512   # tokens (approximate - we use words)
 CHUNK_OVERLAP = 50    # words overlap between chunks
+
+# --------------------- Embedding dimensions per backend ---------------------
+# These MUST match the VectorField(dimensions=...) in rag/models.py.
+# If you switch AI_BACKEND, also run a migration to change the column width
+# OR delete all EmbeddingChunk rows first.
+_EXPECTED_EMBEDDING_DIMS = {
+    "gemini": 768,   # models/gemini-embedding-001 with output_dimensionality=768
+    "ollama": 768,   # nomic-embed-text default
+    "openai": 1536,  # text-embedding-ada-002
+}
+EXPECTED_DIMS = _EXPECTED_EMBEDDING_DIMS.get(AI_BACKEND, 768)
 
 # ------------------ Load Whisper model once at startup ------------------
 logger.info("Loading Whisper base model...")
@@ -240,9 +251,13 @@ def assign_timestamps_to_chunks(chunks: list[dict], segments: list[dict]) -> lis
 def get_embedding(text: str) -> list[float] | None:
     """
     Generate embedding vector using the configured AI backend.
-    Gemini  → text-embedding-004  (768 dims)
-    OpenAI  → text-embedding-ada-002 (1536 dims)
-    Ollama  → nomic-embed-text (768 dims)
+    Gemini  - models/gemini-embedding-001 with output_dimensionality=768 (768 dims)
+    OpenAI  - text-embedding-ada-002 (1536 dims) [WARNING: mismatches pgvector 768-dim column]
+    Ollama  - nomic-embed-text (768 dims)
+
+    IMPORTANT: rag/models.py EmbeddingChunk uses VectorField(dimensions=768).
+    Using AI_BACKEND=openai will produce 1536-dim vectors that Postgres will reject.
+    Either keep AI_BACKEND=gemini/ollama, or migrate the VectorField to dimensions=1536.
     """
     try:
         if AI_BACKEND == "gemini":
@@ -253,10 +268,10 @@ def get_embedding(text: str) -> list[float] | None:
             result = genai.embed_content(
                 model="models/gemini-embedding-001",
                 content=text,
-                task_type="retrieval_document",  
+                task_type="retrieval_document",
                 output_dimensionality=768,
             )
-            return result["embedding"]
+            embedding = result["embedding"]
 
         elif AI_BACKEND == "openai":
             from openai import OpenAI
@@ -265,7 +280,7 @@ def get_embedding(text: str) -> list[float] | None:
                 model="text-embedding-ada-002",
                 input=text,
             )
-            return response.data[0].embedding
+            embedding = response.data[0].embedding
 
         elif AI_BACKEND == "ollama":
             from openai import OpenAI
@@ -274,11 +289,22 @@ def get_embedding(text: str) -> list[float] | None:
                 model="nomic-embed-text",
                 input=text,
             )
-            return response.data[0].embedding
+            embedding = response.data[0].embedding
 
         else:
             logger.error("Unknown AI_BACKEND for embedding: %s", AI_BACKEND)
             return None
+
+        # Dimension safety check - catch mismatches before they hit pgvector
+        if embedding is not None and len(embedding) != EXPECTED_DIMS:
+            logger.error(
+                "Embedding dimension mismatch: backend=%s expected=%d got=%d. "
+                "Either change AI_BACKEND or migrate rag/models.py VectorField dimensions.",
+                AI_BACKEND, EXPECTED_DIMS, len(embedding),
+            )
+            return None
+
+        return embedding
 
     except Exception as exc:
         logger.error("Embedding failed: %s", exc)

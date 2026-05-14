@@ -28,11 +28,15 @@ def build_overview(workspace_id, days=30):
         event_type=EventType.MEETING_COMPLETED,
         days=days,
     )
-    meetings_created = count_events(
+    # Deduplicate meetings created
+    meetings_created_events = query_events(
         workspace_id=workspace_id,
         event_type=EventType.MEETING_CREATED,
         days=days,
     )
+    unique_meetings_created = {e.get('metadata', {}).get('meeting_id') for e in meetings_created_events if e.get('metadata', {}).get('meeting_id')}
+    meetings_created = len(unique_meetings_created)
+
     transcriptions = count_events(
         workspace_id=workspace_id,
         event_type=EventType.TRANSCRIPTION_DONE,
@@ -43,16 +47,25 @@ def build_overview(workspace_id, days=30):
         event_type=EventType.SUMMARY_DONE,
         days=days,
     )
-    action_items_created = count_events(
+
+    # Deduplicate action items created
+    action_created_events = query_events(
         workspace_id=workspace_id,
         event_type=EventType.ACTION_ITEM_CREATED,
         days=days,
     )
-    action_items_completed = count_events(
+    unique_action_created = {e.get('metadata', {}).get('action_item_id') for e in action_created_events if e.get('metadata', {}).get('action_item_id')}
+    action_items_created = len(unique_action_created)
+
+    # Deduplicate action items completed
+    action_completed_events = query_events(
         workspace_id=workspace_id,
         event_type=EventType.ACTION_ITEM_COMPLETED,
         days=days,
     )
+    unique_action_completed = {e.get('metadata', {}).get('action_item_id') for e in action_completed_events if e.get('metadata', {}).get('action_item_id')}
+    action_items_completed = len(unique_action_completed)
+
     rag_queries = count_events(
         workspace_id=workspace_id,
         event_type=EventType.RAG_QUERY,
@@ -68,7 +81,7 @@ def build_overview(workspace_id, days=30):
     unique_completions = {}
     for e in meetings_completed:
         m_id = e.get('metadata', {}).get('meeting_id')
-        if m_id not in unique_completions:
+        if m_id and m_id not in unique_completions:
             unique_completions[m_id] = e
     
     unique_completions_list = list(unique_completions.values())
@@ -88,9 +101,9 @@ def build_overview(workspace_id, days=30):
     # Action item completion rate
     action_completion_rate = 0
     if action_items_created > 0:
-        action_completion_rate = round(
-            (action_items_completed / action_items_created) * 100, 1
-        )
+        rate = (action_items_completed / action_items_created) * 100
+        action_completion_rate = round(min(rate, 100.0), 1)
+
 
     # 5. Usage metrics (SQL)
     from accounts.models import User, Organisation, Membership
@@ -140,7 +153,16 @@ def build_meetings_chart(workspace_id, days=30):
         event_type=EventType.MEETING_COMPLETED,
         days=days,
     )
-    grouped = group_by_day(events)
+    
+    # Deduplicate by meeting_id per day
+    unique_per_day = defaultdict(set)
+    for event in events:
+        date_str = event['created_at'][:10]  # YYYY-MM-DD
+        m_id = event.get('metadata', {}).get('meeting_id')
+        if m_id:
+            unique_per_day[date_str].add(m_id)
+    
+    grouped = {d: len(s) for d, s in unique_per_day.items()}
 
     # Fill in missing days with 0
     result = []

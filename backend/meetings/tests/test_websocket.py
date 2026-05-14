@@ -8,8 +8,12 @@ from accounts.models import User, Organisation, Membership
 from meetings.consumers import meeting_group_name
 
 # Helpers
-def make_user(email="ws@test.com"):
-    org = Organisation.objects.create(name="WS Org", slug="ws-org")
+def make_user(email=None):
+    import uuid
+    unique_id = str(uuid.uuid4())[:8]
+    if not email:
+        email = f"ws-{unique_id}@test.com"
+    org = Organisation.objects.create(name=f"WS Org {unique_id}", slug=f"ws-org-{unique_id}")
     user = User.objects.create_user(
         email=email,
         password="pass",

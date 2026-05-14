@@ -1,5 +1,5 @@
+from django.utils import timezone
 from utils.response import error_response
-from accounts.utils import get_plan_limits, check_limit
 
 
 def workspace_limit_response():
@@ -47,21 +47,102 @@ def meeting_limit_response(limit):
     )
 
 
-def check_workspace_limit(user):
+def get_active_subscription(request):
     """
-    Returns a 403 Response if user has hit their workspace limit.
-    Returns None if they are within limits.
+    Get subscription based on active workspace.
+    Personal → user subscription
+    Organisation → org subscription
     """
-    from accounts.models import Membership
-    limits = get_plan_limits(user.plan)
-    max_ws = limits['max_workspaces']
-    if max_ws is None:
+    from billing.models import Subscription
+    workspace = getattr(request, 'organisation', None)
+
+    if workspace:
+        # Organisation workspace
+        return Subscription.objects.filter(organisation=workspace).first()
+    else:
+        # Personal workspace
+        user = getattr(request, 'user', request)
+        if not hasattr(user, 'id'):
+             return None
+        return Subscription.objects.filter(user=user).first()
+
+
+def check_meeting_limit(request):
+    """
+    Returns a 403 Response if user/org has hit monthly meeting limit.
+    Returns None if within limits.
+    """
+    subscription = get_active_subscription(request)
+    
+    # Fallback to Free plan defaults if no subscription record found
+    if not subscription:
+        limit = 5
+    else:
+        limit = subscription.plan.meeting_limit
+
+    if limit == -1:
+        return None  # unlimited
+
+    monthly_count = _get_monthly_meeting_count(request)
+
+    if monthly_count >= limit:
+        return meeting_limit_response(limit)
+    
+    return None
+
+
+def _get_monthly_meeting_count(request):
+    """Helper to count meetings for the current period."""
+    from meetings.models import Meeting
+    
+    now = timezone.now()
+    user = getattr(request, 'user', request)
+    org = getattr(request, 'organisation', None)
+    
+    # Filter by workspace (if any) or by personal user
+    filters = {
+        'is_archived': False,
+        'created_at__year': now.year,
+        'created_at__month': now.month,
+    }
+    
+    if org:
+        filters['organisation'] = org
+    else:
+        filters['created_by'] = user
+        filters['organisation'] = None
+
+    return Meeting.objects.filter(**filters).count()
+
+
+def check_bot_access(request):
+    subscription = get_active_subscription(request)
+    # Allow if no subscription found (tests/free users)
+    if not subscription:
         return None
-    current = Membership.objects.filter(
-        user=user, role='owner'
-    ).count()
-    if check_limit(current, max_ws):
-        return workspace_limit_response()
+    bot_access = subscription.plan.bot_access
+    if not bot_access:
+        return bot_access_response()
+    return None
+
+
+def check_rag_access(request):
+    """
+    Returns a 403 Response if user's plan does not include RAG access.
+    Returns None if allowed.
+    """
+    subscription = get_active_subscription(request)
+    
+    if subscription:
+        rag_access = subscription.plan.rag_access
+    else:
+        # Fallback to Free plan
+        from billing.models import Plan
+        free_plan = Plan.objects.filter(name='Free').first()
+        rag_access = free_plan.rag_access if free_plan else False
+    
+    if not rag_access:
+        return rag_access_response()
     return None
 
 
@@ -71,65 +152,39 @@ def check_member_limit(organisation):
     Returns None if within limits.
     """
     from accounts.models import Membership
-    limits = get_plan_limits(organisation.plan)
-    max_members = limits['max_members']
-    if max_members is None:
+    from billing.models import Subscription
+    
+    subscription = Subscription.objects.filter(organisation=organisation).first()
+    
+    # Default to 2 members for Free plan
+    max_members = subscription.plan.max_members if subscription else 2
+    
+    if max_members == -1:
         return None
-    current = Membership.objects.filter(
-        organisation=organisation
-    ).count()
-    if check_limit(current, max_members):
+        
+    current = Membership.objects.filter(organisation=organisation).count()
+    if current >= max_members:
         return member_limit_response()
     return None
 
 
-def check_bot_access(user):
+def check_workspace_limit(user):
     """
-    Returns a 403 Response if user's plan does not include bot access.
-    Returns None if allowed.
+    Returns a 403 Response if user has hit their workspace limit.
+    Returns None if they are within limits.
     """
-    limits = get_plan_limits(user.plan)
-    if not limits['bot_access']:
-        return bot_access_response()
-    return None
-
-
-def check_rag_access(user):
-    """
-    Returns a 403 Response if user's plan does not include RAG access.
-    Returns None if allowed.
-    """
-    limits = get_plan_limits(user.plan)
-    if not limits['rag_access']:
-        return rag_access_response()
-    return None
-
-
-def check_meeting_limit(user):
-    """
-    Returns a 403 Response if user has hit monthly meeting limit.
-    Returns None if within limits.
-    Checks personal plan for personal workspace,
-    org plan for org workspace.
-    """
-    limits = get_plan_limits(user.plan)
-    max_meetings = limits['meetings_per_month']
-    if max_meetings is None:
+    from accounts.models import Membership
+    from billing.models import Subscription
+    
+    subscription = Subscription.objects.filter(user=user).first()
+    
+    # Default to 2 workspaces for Free plan
+    max_ws = subscription.plan.max_workspaces if subscription else 2
+    
+    if max_ws == -1:
         return None
-    if check_limit(user.meetings_this_month, max_meetings):
-        return meeting_limit_response(max_meetings)
-    return None
-
-
-def check_org_meeting_limit(organisation):
-    """
-    Returns a 403 Response if org has hit monthly meeting limit.
-    Returns None if within limits.
-    """
-    limits = get_plan_limits(organisation.plan)
-    max_meetings = limits['meetings_per_month']
-    if max_meetings is None:
-        return None
-    if check_limit(organisation.meetings_this_month, max_meetings):
-        return meeting_limit_response(max_meetings)
+        
+    current = Membership.objects.filter(user=user, role='owner').count()
+    if current >= max_ws:
+        return workspace_limit_response()
     return None

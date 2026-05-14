@@ -49,24 +49,24 @@ class TestVerifyInvite:
 
     def test_verify_valid_invite(self, api_client, valid_invite):
         print(f"DEBUG INVITE CODE: '{valid_invite.code}'")
-        url = reverse('verify_invite', kwargs={'version': 'v1', 'code': valid_invite.code})
+        url = reverse('verify_invite', kwargs={'code': valid_invite.code})
         response = api_client.get(url)
         assert response.status_code == 200
         assert response.data['data']['email'] == 'invited@test.com'
         assert response.data['data']['organisation'] == 'Test Org'
 
     def test_verify_expired_invite(self, api_client, expired_invite):
-        url = reverse('verify_invite', kwargs={'version': 'v1', 'code': expired_invite.code})
+        url = reverse('verify_invite', kwargs={'code': expired_invite.code})
         response = api_client.get(url)
         assert response.status_code == 400
 
     def test_verify_accepted_invite(self, api_client, accepted_invite):
-        url = reverse('verify_invite', kwargs={'version': 'v1', 'code': accepted_invite.code})
+        url = reverse('verify_invite', kwargs={'code': accepted_invite.code})
         response = api_client.get(url)
         assert response.status_code == 400
 
     def test_verify_fake_code(self, api_client):
-        url = reverse('verify_invite', kwargs={'version': 'v1', 'code': 'totally-fake-code'})
+        url = reverse('verify_invite', kwargs={'code': 'totally-fake-code'})
         response = api_client.get(url)
         assert response.status_code in [400, 404]
 @pytest.mark.django_db
@@ -93,6 +93,6 @@ class TestInviteEdgeCases:
         assert response.status_code == 400
 
     def test_verify_invite_is_public(self, api_client, valid_invite):
-        url = reverse('verify_invite', kwargs={'version': 'v1', 'code': valid_invite.code})
+        url = reverse('verify_invite', kwargs={'code': valid_invite.code})
         response = api_client.get(url)
         assert response.status_code == 200

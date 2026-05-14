@@ -1,16 +1,17 @@
 from rest_framework import serializers
-from .models import Plan, RazorpayCustomer
+from .models import Plan, Subscription
 
 
 class PlanInfoSerializer(serializers.Serializer):
-    plan = serializers.CharField()
+    plan = serializers.CharField(source='name')
     name = serializers.CharField()
-    meetings_limit = serializers.IntegerField()
+    meetings_limit = serializers.IntegerField(source='meeting_limit')
     max_workspaces = serializers.IntegerField()
     max_members = serializers.IntegerField()
     bot_access = serializers.BooleanField()
     rag_access = serializers.BooleanField()
-    price_id = serializers.CharField(required=False)
+    price = serializers.DecimalField(max_digits=10, decimal_places=2)
+    price_id = serializers.CharField(source='razorpay_plan_id', required=False)
 
 
 class BillingStatusSerializer(serializers.Serializer):
@@ -24,7 +25,8 @@ class BillingStatusSerializer(serializers.Serializer):
 
 
 class CheckoutRequestSerializer(serializers.Serializer):
-    plan = serializers.ChoiceField(choices=[Plan.PRO, Plan.ENTERPRISE])
+    # Changed to string as plans are now database-driven
+    plan = serializers.CharField()
 
 
 class CheckoutResponseSerializer(serializers.Serializer):
@@ -38,3 +40,9 @@ class UsageSerializer(serializers.Serializer):
     meetings_used = serializers.IntegerField()
     meetings_limit = serializers.IntegerField()
     usage_percentage = serializers.FloatField()
+
+
+class VerifySubscriptionSerializer(serializers.Serializer):
+    razorpay_order_id = serializers.CharField()
+    razorpay_payment_id = serializers.CharField()
+    razorpay_signature = serializers.CharField()

@@ -64,6 +64,17 @@ def failed_summary(db, meeting, org_admin, organisation):
     )
 
 
+# ── URL Helpers ──────────────────────────────────────────────────────────────
+def _summary_url(meeting_id):
+    return f"/api/v1/meetings/{meeting_id}/summary/"
+
+def _retry_url(meeting_id):
+    return f"/api/v1/meetings/{meeting_id}/summary/retry/"
+
+def _translate_url(meeting_id):
+    return f"/api/v1/meetings/{meeting_id}/summary/translate/"
+
+
 # ── Model tests ───────────────────────────────────────────────────────────────
 
 @pytest.mark.django_db
@@ -93,12 +104,7 @@ class TestGetSummary:
     def test_owner_can_get_summary(
         self, org_admin_client, completed_summary
     ):
-        response = org_admin_client.get(
-            reverse(
-                "transcripts:summary-detail",
-                args=[completed_summary.meeting.id],
-            )
-        )
+        response = org_admin_client.get(_summary_url(completed_summary.meeting.id))
         assert response.status_code == 200
         data = response.json()["data"]
         assert data["status"] == "completed"
@@ -108,9 +114,7 @@ class TestGetSummary:
         assert data["can_retry"] is False
 
     def test_no_summary_returns_404(self, org_admin_client, meeting):
-        response = org_admin_client.get(
-            reverse("transcripts:summary-detail", args=[meeting.id])
-        )
+        response = org_admin_client.get(_summary_url(meeting.id))
         assert response.status_code == 404
         assert response.json()["code"] == "not_found"
 
@@ -118,21 +122,11 @@ class TestGetSummary:
         self, auth_client, completed_summary
     ):
         # auth_client is individual user
-        response = auth_client.get(
-            reverse(
-                "transcripts:summary-detail",
-                args=[completed_summary.meeting.id],
-            )
-        )
+        response = auth_client.get(_summary_url(completed_summary.meeting.id))
         assert response.status_code == 404
 
     def test_unauthenticated_returns_401(self, api_client, completed_summary):
-        response = api_client.get(
-            reverse(
-                "transcripts:summary-detail",
-                args=[completed_summary.meeting.id],
-            )
-        )
+        response = api_client.get(_summary_url(completed_summary.meeting.id))
         assert response.status_code == 401
 
 
@@ -144,12 +138,7 @@ class TestDeleteSummary:
     def test_owner_can_delete_summary(
         self, org_admin_client, completed_summary
     ):
-        response = org_admin_client.delete(
-            reverse(
-                "transcripts:summary-detail",
-                args=[completed_summary.meeting.id],
-            )
-        )
+        response = org_admin_client.delete(_summary_url(completed_summary.meeting.id))
         assert response.status_code == 200
         assert not MeetingSummary.objects.filter(
             id=completed_summary.id
@@ -165,12 +154,7 @@ class TestRetrySummary:
     def test_retry_failed_summary_increments_count(
         self, mock_kafka, org_admin_client, failed_summary, transcript
     ):
-        response = org_admin_client.post(
-            reverse(
-                "transcripts:summary-retry",
-                args=[failed_summary.meeting.id],
-            )
-        )
+        response = org_admin_client.post(_retry_url(failed_summary.meeting.id))
         assert response.status_code == 200
         failed_summary.refresh_from_db()
         assert failed_summary.retry_count == 1
@@ -181,12 +165,7 @@ class TestRetrySummary:
     def test_retry_fires_kafka_message(
         self, mock_kafka, org_admin_client, failed_summary, transcript
     ):
-        org_admin_client.post(
-            reverse(
-                "transcripts:summary-retry",
-                args=[failed_summary.meeting.id],
-            )
-        )
+        org_admin_client.post(_retry_url(failed_summary.meeting.id))
         mock_kafka.assert_called_once_with(
             meeting_id=str(failed_summary.meeting.id),
             transcript_text=transcript.raw_text,
@@ -209,10 +188,7 @@ class TestTranslateSummary:
             "next_steps": ["തുടർനടപടികൾ ഷെഡ്യൂൾ ചെയ്യുക"]
         }
         response = org_admin_client.post(
-            reverse(
-                "transcripts:summary-translate",
-                args=[completed_summary.meeting.id],
-            ),
+            _translate_url(completed_summary.meeting.id),
             {"target_language": "Malayalam"},
             format="json",
         )
@@ -233,10 +209,7 @@ class TestTranslateSummary:
             "next_steps": []
         }
         response = org_admin_client.post(
-            reverse(
-                "transcripts:summary-translate",
-                args=[completed_summary.meeting.id],
-            ),
+            _translate_url(completed_summary.meeting.id),
             {"target_language": "hindi"},   # lowercase input
             format="json",
         )
@@ -253,7 +226,7 @@ class TestInternalSummaryComplete:
     def test_valid_secret_saves_completed_summary(self, api_client, meeting):
         from django.conf import settings
         response = api_client.post(
-            reverse("transcripts:summary-complete-internal"),
+            "/api/v1/internal/summary/complete/",
             {
                 "meeting_id":   str(meeting.id),
                 "status":       "completed",
