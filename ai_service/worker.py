@@ -4,7 +4,7 @@ import os
 import tempfile
 
 import requests
-import whisper
+from groq import Groq
 from confluent_kafka import Consumer, KafkaError
 from summarizer import generate_summary
 
@@ -49,10 +49,9 @@ _EXPECTED_EMBEDDING_DIMS = {
 }
 EXPECTED_DIMS = _EXPECTED_EMBEDDING_DIMS.get(AI_BACKEND, 768)
 
-# ------------------ Load Whisper model once at startup ------------------
-logger.info("Loading Whisper base model...")
-model = whisper.load_model("base")
-logger.info("Whisper model loaded successfully")
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+groq_client = Groq(api_key=GROQ_API_KEY)
+logger.info("Groq client initialized successfully")
 
 
 # ------------------ S3 helpers ------------------
@@ -412,38 +411,70 @@ def process_summarization_message(message: dict) -> None:
 
 def transcribe_audio(local_path: str) -> dict | None:
     try:
-        logger.info("Starting Whisper transcription: %s", local_path)
-        result = model.transcribe(
-            local_path,
-            verbose=False,
-            fp16=False,
-        )
+        logger.info("Starting Groq Whisper transcription: %s", local_path)
+        with open(local_path, "rb") as audio_file:
+            result = groq_client.audio.transcriptions.create(
+                file=audio_file,
+                model="whisper-large-v3",
+                response_format="verbose_json",
+            )
 
-        segments = [
-            {
-                "text":          seg["text"].strip(),
-                "start_seconds": round(seg["start"], 3),
-                "end_seconds":   round(seg["end"], 3),
-                "confidence":    round(abs(seg.get("avg_logprob", 0)), 3),
-            }
-            for seg in result.get("segments", [])
-        ]
+        logger.info("Groq result type: %s", type(result))
+        logger.info("Groq result: %s", result)
 
-        logger.info(
-            "Whisper transcription complete — %d segments, language: %s",
-            len(segments),
-            result.get("language", "unknown"),
-        )
+        # Get text
+        if hasattr(result, 'text'):
+            result_text = result.text
+        elif isinstance(result, dict):
+            result_text = result.get("text", "")
+        else:
+            result_text = str(result)
+
+        # Get language
+        if hasattr(result, 'language'):
+            result_language = result.language or "en"
+        elif isinstance(result, dict):
+            result_language = result.get("language", "en")
+        else:
+            result_language = "en"
+
+        # Get segments
+        if hasattr(result, 'segments'):
+            raw_segments = result.segments or []
+            segments = [
+                {
+                    "text":          seg.text.strip() if hasattr(seg, 'text') else seg.get("text", "").strip(),
+                    "start_seconds": round(seg.start if hasattr(seg, 'start') else seg.get("start", 0), 3),
+                    "end_seconds":   round(seg.end if hasattr(seg, 'end') else seg.get("end", 0), 3),
+                    "confidence":    0.9,
+                }
+                for seg in raw_segments
+            ]
+        elif isinstance(result, dict):
+            raw_segments = result.get("segments", [])
+            segments = [
+                {
+                    "text":          seg.get("text", "").strip(),
+                    "start_seconds": round(seg.get("start", 0), 3),
+                    "end_seconds":   round(seg.get("end", 0), 3),
+                    "confidence":    0.9,
+                }
+                for seg in raw_segments
+            ]
+        else:
+            segments = []
+
+        logger.info("Groq transcription complete — %d segments", len(segments))
 
         return {
-            "text":     result.get("text", "").strip(),
-            "language": result.get("language", "en"),
-            "duration": result["segments"][-1]["end"] if result.get("segments") else None,
+            "text":     result_text.strip(),
+            "language": result_language,
+            "duration": segments[-1]["end_seconds"] if segments else None,
             "segments": segments,
         }
 
     except Exception as exc:
-        logger.error("Whisper transcription failed: %s", exc)
+        logger.error("Groq transcription failed: %s", exc, exc_info=True)
         return None
 
 

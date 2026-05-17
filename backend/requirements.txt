@@ -61,3 +61,4 @@ qrcode>=8.0.0
 Pillow>=11.0.0
 razorpay==1.4.2
 setuptools<70
+dj-database-url==2.1.0
