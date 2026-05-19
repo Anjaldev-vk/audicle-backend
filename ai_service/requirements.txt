@@ -3,10 +3,6 @@ uvicorn
 python-multipart
 pydantic
 confluent-kafka
-# Optimizing for CPU to reduce image size and avoid IO errors during build
---extra-index-url https://download.pytorch.org/whl/cpu
-torch
-openai-whisper
 
 boto3==1.34.0
 requests==2.31.0

@@ -4,8 +4,42 @@ from channels.layers import get_channel_layer
 from .repository import create_notification
 from .constants import NotificationType, NOTIFICATION_TITLES
 import logging
+import boto3
+import json
+from django.conf import settings
 
 logger = logging.getLogger(__name__)
+
+
+def _get_sqs_client():
+    return boto3.client(
+        'sqs',
+        region_name=settings.AWS_S3_REGION,
+        aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+        aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+    )
+
+
+def _send_to_sqs(user_id, notification):
+    """Send notification to SQS queue for Lambda processing."""
+    try:
+        sqs = _get_sqs_client()
+        queue_url = settings.SQS_NOTIFICATIONS_QUEUE_URL
+
+        message = {
+            'user_id': str(user_id),
+            'notification': notification,
+        }
+
+        sqs.send_message(
+            QueueUrl=queue_url,
+            MessageBody=json.dumps(message),
+        )
+        logger.info('Notification sent to SQS for user %s', user_id)
+        return True
+    except Exception as e:
+        logger.error('Failed to send to SQS for user %s: %s', user_id, e)
+        return False
 
 
 def _push_via_websocket(user_id, notification):
@@ -25,7 +59,11 @@ def _push_via_websocket(user_id, notification):
 
 def _create_and_push(user_id, notification_type, message,
                      metadata=None, workspace_id=None):
-    """Create notification in DynamoDB then push via WebSocket."""
+    """
+    Create notification in DynamoDB.
+    Send to SQS for Lambda WebSocket push.
+    Fallback to direct WebSocket push if SQS fails.
+    """
     title = NOTIFICATION_TITLES.get(notification_type, 'Notification')
     notification = create_notification(
         user_id=user_id,
@@ -35,7 +73,15 @@ def _create_and_push(user_id, notification_type, message,
         metadata=metadata,
         workspace_id=workspace_id,
     )
-    _push_via_websocket(user_id, notification)
+
+    # Try SQS first (Lambda will push WebSocket)
+    sqs_sent = _send_to_sqs(user_id, notification)
+
+    # Fallback to direct WebSocket push if SQS fails
+    if not sqs_sent:
+        logger.warning('SQS failed — falling back to direct WebSocket push')
+        _push_via_websocket(user_id, notification)
+
     return notification
 
 

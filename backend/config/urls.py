@@ -25,6 +25,7 @@ from drf_spectacular.views import (
 
 from meetings.internal_views import BotStatusView
 from rag import urls as rag_urls
+from notifications import urls as notification_urls
 
 urlpatterns = [
 #---------------------------------- Admin ----------------------------------
@@ -45,6 +46,7 @@ urlpatterns = [
 
 #------------------------------------ internal  ------------------------------------
     path('internal/', include(rag_urls.internal_urlpatterns)),
+    path('internal/', include(notification_urls.internal_urlpatterns)),
     path('internal/bot/status/', BotStatusView.as_view(), name='internal-bot-status'),
 
 #---------------------------------- API Documentation ----------------------------------

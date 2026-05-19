@@ -4,6 +4,7 @@ from .views import (
     NotificationReadView,
     NotificationReadAllView,
     NotificationDeleteView,
+    InternalNotificationPushView,
 )
 
 urlpatterns = [
@@ -11,4 +12,9 @@ urlpatterns = [
     path('read-all/', NotificationReadAllView.as_view()),
     path('<str:notification_id>/read/', NotificationReadView.as_view()),
     path('<str:notification_id>/', NotificationDeleteView.as_view()),
+]
+
+# Internal endpoints (called by Lambda)
+internal_urlpatterns = [
+    path('notifications/push/', InternalNotificationPushView.as_view()),
 ]

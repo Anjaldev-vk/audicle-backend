@@ -1,3 +1,8 @@
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
+from django.conf import settings
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.decorators import method_decorator
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -77,3 +82,36 @@ class NotificationDeleteView(APIView):
             sk=sk,
         )
         return success_response(message='Notification deleted')
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class InternalNotificationPushView(APIView):
+    permission_classes = []  # No auth — uses internal secret
+
+    def post(self, request):
+        # Verify internal secret
+        secret = request.headers.get('X-Internal-Secret')
+        if secret != settings.INTERNAL_API_SECRET:
+            return Response({'error': 'Unauthorized'}, status=401)
+
+        user_id = request.data.get('user_id')
+        notification = request.data.get('notification', {})
+
+        if not user_id:
+            return Response({'error': 'user_id required'}, status=400)
+
+        try:
+            # Push via WebSocket
+            channel_layer = get_channel_layer()
+            async_to_sync(channel_layer.group_send)(
+                f'notifications_{user_id}',
+                {
+                    'type': 'notification.push',
+                    'notification': notification,
+                }
+            )
+            logger.info('Lambda WebSocket push successful for user %s', user_id)
+            return Response({'status': 'pushed'})
+        except Exception as e:
+            logger.error('Lambda WebSocket push failed: %s', e)
+            return Response({'error': str(e)}, status=500)

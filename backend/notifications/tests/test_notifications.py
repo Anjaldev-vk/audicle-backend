@@ -88,9 +88,10 @@ def test_mark_read_missing_sk(auth_client):
 
 
 @patch('notifications.tasks.create_notification')
-@patch('notifications.tasks._push_via_websocket')
-def test_notify_transcription_done_task(mock_push, mock_create):
+@patch('notifications.tasks._send_to_sqs')
+def test_notify_transcription_done_task(mock_sqs, mock_create):
     mock_create.return_value = MOCK_NOTIFICATION
+    mock_sqs.return_value = True
     from notifications.tasks import notify_transcription_done
     notify_transcription_done(
         user_id='user-123',
@@ -98,4 +99,4 @@ def test_notify_transcription_done_task(mock_push, mock_create):
         meeting_title='Team standup',
     )
     mock_create.assert_called_once()
-    mock_push.assert_called_once()
+    mock_sqs.assert_called_once()
